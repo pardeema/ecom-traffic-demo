@@ -82,7 +82,7 @@ const LoginForm: React.FC = () => {
         <p>Demo credentials:</p>
         <ul>
           <li>Email: user@example.com</li>
-          <li>Password: password123</li>
+          <li>Password: * </li>
         </ul>
       </div>
       
