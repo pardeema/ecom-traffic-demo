@@ -1,4 +1,4 @@
-// src/app/api/traffic/route.ts
+// src/app/api/traffic/route.ts - Updated fix for type error
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -20,16 +20,16 @@ export async function GET(req: NextRequest) {
     const isProduction = process.env.NODE_ENV === 'production';
     
     if (isProduction) {
-      // Use Redis in production
+      // Convert null to undefined to satisfy TypeScript
       const logs = await getTrafficLogs({
-        endpoint,
+        endpoint: endpoint ?? undefined,
         timeWindow,
-        method,
+        method: method ?? undefined,
         isBot
       });
       return NextResponse.json(logs);
     } else {
-      // Use file-based in development (existing code)
+      // File-based storage for development environment
       const logFilePath = path.join(process.cwd(), 'src/data/traffic.json');
       
       if (!fs.existsSync(logFilePath)) {
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       const logsData = fs.readFileSync(logFilePath, 'utf8');
       let logs: TrafficLog[] = JSON.parse(logsData);
       
-      // Apply filters (your existing filtering code)
+      // Apply filters
       if (endpoint) {
         logs = logs.filter(log => log.endpoint === endpoint);
       }
