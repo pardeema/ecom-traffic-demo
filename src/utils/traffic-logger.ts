@@ -75,7 +75,7 @@ export async function getTrafficLogs(options: {
     const logEntries = await Promise.all(
       logIds.map(async (id) => {
         try {
-          const data = await redis.get(id);
+          const data = await redis.get(id as string);
           // The key change: don't try to parse if data is already an object
           return data ? (typeof data === 'string' ? JSON.parse(data) : data) as TrafficLog : null;
         } catch (error) {
