@@ -1,5 +1,5 @@
 // src/components/Dashboard.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import TrafficChart from './TrafficChart';
 import { TrafficLog } from '@/types';
 
@@ -11,7 +11,7 @@ interface RecentTrafficProps {
 const RecentTraffic: React.FC<RecentTrafficProps> = ({ timeWindow }) => {
   const [traffic, setTraffic] = useState<TrafficLog[]>([]);
   
-  useEffect(() => {
+  useState(() => {
     const fetchTraffic = async () => {
       try {
         const response = await fetch(`/api/traffic?timeWindow=${timeWindow}`);

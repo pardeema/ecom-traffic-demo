@@ -190,57 +190,5 @@
       "x-forwarded-port": "3000",
       "x-forwarded-proto": "http"
     }
-  },
-  {
-    "timestamp": "2025-04-16T00:19:41.900Z",
-    "endpoint": "/api/auth/login",
-    "method": "POST",
-    "ip": "::1",
-    "userAgent": "curl/8.7.1",
-    "isBot": false,
-    "statusCode": 500,
-    "headers": {
-      "accept": "*/*",
-      "content-length": "4",
-      "content-type": "application/x-www-form-urlencoded",
-      "host": "localhost:3000",
-      "user-agent": "curl/8.7.1",
-      "x-forwarded-for": "::1",
-      "x-forwarded-host": "localhost:3000",
-      "x-forwarded-port": "3000",
-      "x-forwarded-proto": "http"
-    }
-  },
-  {
-    "timestamp": "2025-04-16T00:21:57.609Z",
-    "endpoint": "/api/checkout",
-    "method": "POST",
-    "ip": "::1",
-    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-    "isBot": false,
-    "statusCode": 200,
-    "headers": {
-      "accept": "*/*",
-      "accept-encoding": "gzip, deflate, br, zstd",
-      "accept-language": "en-US,en;q=0.9",
-      "connection": "keep-alive",
-      "content-length": "300",
-      "content-type": "application/json",
-      "cookie": "session=eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6ImFsaWNlIn0.Z_wCJg.7NDEFj0rabQVe_aZ2uP2NyedSCk",
-      "host": "localhost:3000",
-      "origin": "http://localhost:3000",
-      "referer": "http://localhost:3000/checkout",
-      "sec-ch-ua": "\"Google Chrome\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": "\"macOS\"",
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-origin",
-      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-      "x-forwarded-for": "::1",
-      "x-forwarded-host": "localhost:3000",
-      "x-forwarded-port": "3000",
-      "x-forwarded-proto": "http"
-    }
   }
 ]

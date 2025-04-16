@@ -28,10 +28,19 @@ export async function logTrafficRequest(
     };
     
     // Capture status code from response
-    // Use only event listeners instead of monkey-patching res.end
-    res.on('close', () => {
+    const originalEnd = res.end;
+    res.end = function(chunk?: any) {
       logEntry.statusCode = res.statusCode;
       saveLogEntry(logEntry);
+      return originalEnd.apply(this, arguments);
+    };
+    
+    // For requests that might not call res.end
+    res.on('finish', function() {
+      if (!logEntry.statusCode) {
+        logEntry.statusCode = res.statusCode;
+        saveLogEntry(logEntry);
+      }
     });
     
     return logEntry;
