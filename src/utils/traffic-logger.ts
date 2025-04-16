@@ -43,7 +43,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       
       // Delete the log entries
       if (oldestLogIds.length > 0) {
-        await redis.del(...oldestLogIds);
+        await redis.del(...(oldestLogIds as string[]));
       }
       
       // Remove the IDs from the sorted set
