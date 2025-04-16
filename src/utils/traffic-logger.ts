@@ -1,94 +1,62 @@
 // src/utils/traffic-logger.ts
-import fs from 'fs';
-import path from 'path';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest } from 'next/server';
+import { redis } from './redis-client';
 import { TrafficLog } from '@/types';
 
-export async function logTrafficRequest(
-  req: NextApiRequest, 
-  endpoint: string, 
-  res: NextApiResponse
-): Promise<TrafficLog | null> {
+// Key prefix for logs
+const LOG_PREFIX = 'traffic:log:';
+// Key for the list of all log IDs
+const LOGS_LIST_KEY = 'traffic:logs';
+// Maximum number of logs to keep
+const MAX_LOGS = 1000;
+
+/**
+ * Log traffic data to Redis
+ */
+export async function logTraffic(req: NextRequest, endpoint: string, status: number): Promise<void> {
   try {
-    // Create a log entry
+    const timestamp = new Date().toISOString();
+    const logId = `${LOG_PREFIX}${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    
     const logEntry: TrafficLog = {
-      timestamp: new Date().toISOString(),
+      timestamp,
       endpoint,
-      method: req.method || 'UNKNOWN',
-      ip: ((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress) || 'unknown',
-      userAgent: req.headers['user-agent'] || 'unknown',
-      // This flag would be set by your bot protection solution
-      isBot: req.headers['x-is-bot'] === 'true',
-      // Additional useful headers
-      headers: {
-        host: req.headers.host,
-        origin: req.headers.origin,
-        referer: req.headers.referer,
-      }
+      method: req.method,
+      ip: req.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: req.headers.get('user-agent') || 'unknown',
+      isBot: req.headers.get('x-is-bot') === 'true',
+      statusCode: status,
+      headers: Object.fromEntries(req.headers.entries())
     };
     
-    // Capture status code from response
-    const originalEnd = res.end;
-    res.end = function(chunk?: any) {
-      logEntry.statusCode = res.statusCode;
-      saveLogEntry(logEntry);
-      return originalEnd.apply(this, arguments);
-    };
+    // Store the log entry as JSON
+    await redis.set(logId, JSON.stringify(logEntry));
     
-    // For requests that might not call res.end
-    res.on('finish', function() {
-      if (!logEntry.statusCode) {
-        logEntry.statusCode = res.statusCode;
-        saveLogEntry(logEntry);
+    // Store the log ID in a sorted set with timestamp as score for time-based querying
+    await redis.zadd(LOGS_LIST_KEY, { score: Date.now(), member: logId });
+    
+    // Clean up old logs to limit storage usage
+    const count = await redis.zcard(LOGS_LIST_KEY);
+    if (count > MAX_LOGS) {
+      // Get the oldest log IDs
+      const oldestLogIds = await redis.zrange(LOGS_LIST_KEY, 0, count - MAX_LOGS - 1);
+      
+      // Delete the log entries
+      if (oldestLogIds.length > 0) {
+        await redis.del(...oldestLogIds);
       }
-    });
-    
-    return logEntry;
+      
+      // Remove the IDs from the sorted set
+      await redis.zremrangebyrank(LOGS_LIST_KEY, 0, count - MAX_LOGS - 1);
+    }
   } catch (error) {
     console.error('Error logging traffic:', error);
-    // Don't let logging errors affect the API functionality
-    return null;
   }
 }
 
-async function saveLogEntry(logEntry: TrafficLog): Promise<void> {
-  try {
-    // Path to traffic log file
-    const logFilePath = path.join(process.cwd(), 'src/data/traffic.json');
-    
-    // Create directory if it doesn't exist
-    const dir = path.dirname(logFilePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    
-    // Read existing logs
-    let logs: TrafficLog[] = [];
-    if (fs.existsSync(logFilePath)) {
-      const logsData = fs.readFileSync(logFilePath, 'utf8');
-      try {
-        logs = JSON.parse(logsData);
-      } catch (e) {
-        // If file is corrupted, start with empty array
-        logs = [];
-      }
-    }
-    
-    // Add new log entry
-    logs.push(logEntry);
-    
-    // Keep only the last 1000 entries to prevent the file from growing too large
-    if (logs.length > 1000) {
-      logs = logs.slice(-1000);
-    }
-    
-    // Save logs back to file
-    fs.writeFileSync(logFilePath, JSON.stringify(logs, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error saving traffic log:', error);
-  }
-}
-
+/**
+ * Get traffic logs with optional filtering
+ */
 export async function getTrafficLogs(options: {
   endpoint?: string;
   timeWindow?: number;
@@ -96,17 +64,30 @@ export async function getTrafficLogs(options: {
   isBot?: boolean;
 } = {}): Promise<TrafficLog[]> {
   try {
-    // Path to traffic log file
-    const logFilePath = path.join(process.cwd(), 'src/data/traffic.json');
+    // Get all log IDs, sorted by time (newest first)
+    const logIds = await redis.zrange(LOGS_LIST_KEY, 0, -1, { rev: true });
     
-    // If file doesn't exist, return empty array
-    if (!fs.existsSync(logFilePath)) {
+    if (logIds.length === 0) {
       return [];
     }
     
-    // Read and parse logs
-    const logsData = fs.readFileSync(logFilePath, 'utf8');
-    let logs: TrafficLog[] = JSON.parse(logsData);
+    // Get all log entries
+    const logEntries = await Promise.all(
+      logIds.map(async (id) => {
+        try {
+          const data = await redis.get(id);
+          // The key change: don't try to parse if data is already an object
+          return data ? (typeof data === 'string' ? JSON.parse(data) : data) as TrafficLog : null;
+        } catch (error) {
+          console.error(`Error retrieving log ${id}:`, error);
+          return null;
+        }
+      })
+    );
+
+    
+    // Filter out any null entries
+    let logs = logEntries.filter((log): log is TrafficLog => log !== null);
     
     // Apply filters
     if (options.endpoint) {
@@ -129,7 +110,7 @@ export async function getTrafficLogs(options: {
     
     return logs;
   } catch (error) {
-    console.error('Error reading traffic logs:', error);
+    console.error('Error retrieving traffic logs:', error);
     return [];
   }
 }
