@@ -6,14 +6,28 @@ import { TrafficLog } from '@/types';
 
 export async function logTraffic(req: NextRequest, endpoint: string, status: number) {
   try {
+    // Helper function to get the client IP from headers
+    const getClientIp = (request: NextRequest): string => {
+      const xff = request.headers.get('x-forwarded-for');
+      if (xff) {
+        // Return the first IP in the list, trimming whitespace
+        return xff.split(',')[0].trim();
+      }
+      // Fallback if XFF is not present (might be direct connection or different header)
+      // Note: req.ip might be less reliable in Next.js Edge Runtime, XFF is preferred behind a proxy.
+      return request.ip || 'unknown'; 
+    };
+
+    const clientIp = getClientIp(req);
+
     const logEntry = {
       timestamp: new Date().toISOString(),
       endpoint: endpoint,
       method: req.method,
-      ip: req.headers.get('x-real-ip') || 'unknown', // JUST use x-real-ip
-      realIp: req.headers.get('x-real-ip') || 'unknown', // Add a dedicated field
+      ip: clientIp, // Use the extracted client IP
+      realIp: clientIp, // Store it in realIp as well for the frontend
       userAgent: req.headers.get('user-agent') || 'unknown',
-      isBot: req.headers.get('x-is-bot') === 'true',
+      isBot: req.headers.get('x-is-bot') === 'true', // Ensure this header name is correct
       statusCode: status,
       headers: Object.fromEntries(req.headers.entries())
     };

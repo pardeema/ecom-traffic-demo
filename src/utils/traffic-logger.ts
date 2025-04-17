@@ -18,16 +18,29 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     const timestamp = new Date().toISOString();
     const logId = `${LOG_PREFIX}${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
     
+    // Helper function to get the client IP from headers
+    const getClientIp = (request: NextRequest): string => {
+      const xff = request.headers.get('x-forwarded-for');
+      if (xff) {
+        // Return the first IP in the list, trimming whitespace
+        return xff.split(',')[0].trim();
+      }
+      // Fallback if XFF is not present (might be direct connection or different header)
+      return request.ip || 'unknown'; 
+    };
+
+    const clientIp = getClientIp(req);
+
     const logEntry: TrafficLog = {
       timestamp,
       endpoint,
       method: req.method,
-      ip: req.headers.get('x-real-ip') || 'unknown', // JUST use x-real-ip
-      realIp: req.headers.get('x-real-ip') || 'unknown', // Add a dedicated field
+      ip: clientIp, // Use the extracted client IP
+      realIp: clientIp, // Store it in realIp as well for the frontend
       userAgent: req.headers.get('user-agent') || 'unknown',
-      isBot: req.headers.get('x-kasada-classification') === 'bad-bot',
+      isBot: req.headers.get('x-kasada-classification') === 'bad-bot', // Make sure this header name is correct for your bot detection
       statusCode: status,
-      headers: Object.fromEntries(req.headers.entries())
+      headers: Object.fromEntries(req.headers.entries()) // Keep storing all headers for debugging if needed
     };
     
     // Store the log entry as JSON
