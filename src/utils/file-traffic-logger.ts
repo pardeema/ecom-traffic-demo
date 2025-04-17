@@ -10,7 +10,9 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       timestamp: new Date().toISOString(),
       endpoint: endpoint,
       method: req.method,
-      ip: req.headers.get('x-forwarded-for') || 'unknown',
+      // Extract first IP from x-forwarded-for chain
+      ip: req.headers.get('x-real-ip') || 
+         'unknown',
       userAgent: req.headers.get('user-agent') || 'unknown',
       isBot: req.headers.get('x-is-bot') === 'true',
       statusCode: status,
