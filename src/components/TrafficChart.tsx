@@ -1,5 +1,5 @@
 // src/components/TrafficChart.tsx
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,33 +27,13 @@ ChartJS.register(
 );
 
 interface TrafficChartProps {
+  data: TrafficLog[]; // Now accepting data directly
   endpoint: string;
-  timeWindow?: number;
+  timeWindow: number;
 }
 
-const TrafficChart: React.FC<TrafficChartProps> = ({ endpoint, timeWindow = 5 }) => {
-  const [trafficData, setTrafficData] = useState<TrafficLog[]>([]);
+const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow }) => {
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
-  
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch(`/api/traffic?endpoint=${endpoint}&timeWindow=${timeWindow}`);
-        const data = await response.json();
-        setTrafficData(data);
-      } catch (error) {
-        console.error('Error fetching traffic data:', error);
-      }
-    };
-    
-    // Fetch initial data
-    fetchData();
-    
-    // Set up polling
-    const intervalId = setInterval(fetchData, 2000);
-    
-    return () => clearInterval(intervalId);
-  }, [endpoint, timeWindow]);
   
   // Prepare time series data
   const prepareTimeSeriesData = () => {
@@ -71,7 +51,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ endpoint, timeWindow = 5 })
       const bucketEnd = new Date(bucketTime);
       bucketEnd.setSeconds(bucketEnd.getSeconds() + 10);
       
-      return trafficData.filter(item => {
+      return data.filter(item => {
         const itemTime = new Date(item.timestamp);
         return itemTime >= bucketTime && itemTime < bucketEnd;
       }).length;
@@ -101,7 +81,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ endpoint, timeWindow = 5 })
   const prepareResponseCodeData = () => {
     const responseCodes: { [key: string]: number } = {};
     
-    trafficData.forEach(item => {
+    data.forEach(item => {
       const code = item.statusCode?.toString() || 'unknown';
       responseCodes[code] = (responseCodes[code] || 0) + 1;
     });
@@ -214,12 +194,12 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ endpoint, timeWindow = 5 })
       <div className="traffic-stats">
         <div className="stat-item">
           <span className="stat-label">Total Requests:</span>
-          <span className="stat-value">{trafficData.length}</span>
+          <span className="stat-value">{data.length}</span>
         </div>
         <div className="stat-item">
           <span className="stat-label">Last 10 seconds:</span>
           <span className="stat-value">
-            {trafficData.filter(item => {
+            {data.filter(item => {
               const itemTime = new Date(item.timestamp);
               const tenSecondsAgo = new Date();
               tenSecondsAgo.setSeconds(tenSecondsAgo.getSeconds() - 10);

@@ -30,7 +30,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     };
     
     // Store the log entry as JSON
-    await redis.set(logId, JSON.stringify(logEntry));
+    await redis.set(logId, JSON.stringify(logEntry), { ex: 1800 }); // 30-minute expiration
     
     // Store the log ID in a sorted set with timestamp as score for time-based querying
     await redis.zadd(LOGS_LIST_KEY, { score: Date.now(), member: logId });

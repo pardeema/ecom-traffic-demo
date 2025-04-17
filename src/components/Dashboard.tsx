@@ -3,35 +3,16 @@ import { useState, useEffect } from 'react';
 import TrafficChart from './TrafficChart';
 import { TrafficLog } from '@/types';
 
-interface RecentTrafficProps {
-  timeWindow: number;
+interface DashboardData {
+  login: TrafficLog[];
+  checkout: TrafficLog[];
+  recent: TrafficLog[];
+  timestamp: string;
 }
 
-// Recent Traffic component
-const RecentTraffic: React.FC<RecentTrafficProps> = ({ timeWindow }) => {
-  const [traffic, setTraffic] = useState<TrafficLog[]>([]);
-  
-  useEffect(() => {
-    const fetchTraffic = async () => {
-      try {
-        const response = await fetch(`/api/traffic?timeWindow=${timeWindow}`);
-        const data = await response.json();
-        setTraffic(data.slice(-10).reverse()); // Get last 10 requests
-      } catch (error) {
-        console.error('Error fetching recent traffic:', error);
-      }
-    };
-    
-    // Fetch initial data
-    fetchTraffic();
-    
-    // Set up polling
-    const intervalId = setInterval(fetchTraffic, 2000);
-    
-    return () => clearInterval(intervalId);
-  }, [timeWindow]);
-  
-  if (traffic.length === 0) {
+// Recent Traffic Table component
+const RecentTrafficTable: React.FC<{ data: TrafficLog[] }> = ({ data }) => {
+  if (data.length === 0) {
     return <p>No recent traffic data available.</p>;
   }
   
@@ -48,7 +29,7 @@ const RecentTraffic: React.FC<RecentTrafficProps> = ({ timeWindow }) => {
           </tr>
         </thead>
         <tbody>
-          {traffic.map((item, index) => (
+          {data.map((item, index) => (
             <tr key={index}>
               <td>{new Date(item.timestamp).toLocaleTimeString()}</td>
               <td>{item.endpoint}</td>
@@ -96,6 +77,38 @@ const RecentTraffic: React.FC<RecentTrafficProps> = ({ timeWindow }) => {
 
 const Dashboard: React.FC = () => {
   const [timeWindow, setTimeWindow] = useState<number>(5);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const response = await fetch(`/api/traffic/combined?timeWindow=${timeWindow}`);
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setDashboardData(data);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      }
+    };
+    
+    // Initial fetch
+    fetchDashboardData();
+    
+    // Set up polling at 5-second intervals
+    const intervalId = setInterval(fetchDashboardData, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, [timeWindow]);
+  
+  if (loading) {
+    return <div className="loading">Loading dashboard data...</div>;
+  }
   
   return (
     <div className="dashboard">
@@ -119,18 +132,26 @@ const Dashboard: React.FC = () => {
       <div className="charts-container">
         <div className="chart-section">
           <h2>Login Endpoint</h2>
-          <TrafficChart endpoint="/api/auth/login" timeWindow={timeWindow} />
+          <TrafficChart 
+            data={dashboardData?.login || []} 
+            endpoint="/api/auth/login" 
+            timeWindow={timeWindow} 
+          />
         </div>
         
         <div className="chart-section">
           <h2>Checkout Endpoint</h2>
-          <TrafficChart endpoint="/api/checkout" timeWindow={timeWindow} />
+          <TrafficChart 
+            data={dashboardData?.checkout || []} 
+            endpoint="/api/checkout" 
+            timeWindow={timeWindow} 
+          />
         </div>
       </div>
       
       <div className="recent-traffic">
         <h2>Recent Requests</h2>
-        <RecentTraffic timeWindow={timeWindow} />
+        <RecentTrafficTable data={dashboardData?.recent || []} />
       </div>
       
       <style jsx>{`
@@ -196,6 +217,14 @@ const Dashboard: React.FC = () => {
           margin-bottom: 15px;
           font-size: 18px;
           color: #333;
+        }
+        
+        .loading {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 200px;
+          font-size: 18px;
         }
       `}</style>
     </div>
