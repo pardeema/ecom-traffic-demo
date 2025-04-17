@@ -10,10 +10,18 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     const getClientIp = (request: NextRequest): string => {
       const xff = request.headers.get('x-forwarded-for');
       if (xff) {
-        // Return the first IP in the list, trimming whitespace
-        return xff.split(',')[0].trim();
+        // Split by comma, trimming whitespace around IPs
+        const ips = xff.split(',').map(ip => ip.trim());
+        // Check if there is a second IP address (index 1)
+        if (ips.length > 1 && ips[1]) {
+          return ips[1]; // Return the second IP
+        }
+        // Fallback to the first IP if there's only one
+        if (ips.length > 0 && ips[0]) {
+          return ips[0]; 
+        }
       }
-      // Fallback if XFF is not present (might be direct connection or different header)
+      // Fallback if XFF is not present or empty
       return 'unknown'; 
     };
 
@@ -26,7 +34,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       ip: clientIp, // Use the extracted client IP
       realIp: clientIp, // Store it in realIp as well for the frontend
       userAgent: req.headers.get('user-agent') || 'unknown',
-      isBot: req.headers.get('x-is-bot') === 'true', // Ensure this header name is correct
+      isBot: req.headers.get('x-kasada-classification') === 'bad-bot', // Ensure this header name is correct
       statusCode: status,
       headers: Object.fromEntries(req.headers.entries())
     };
