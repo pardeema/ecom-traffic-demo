@@ -34,7 +34,7 @@ const RecentTrafficTable: React.FC<{ data: TrafficLog[] }> = ({ data }) => {
               <td>{new Date(item.timestamp).toLocaleTimeString()}</td>
               <td>{item.endpoint}</td>
               <td>{item.method}</td>
-              <td>{item.ip}</td>
+              <td>{item.headers && item.headers["x-forwarded-for"] || item.ip}</td>
               <td>{item.statusCode || 'N/A'}</td>
             </tr>
           ))}

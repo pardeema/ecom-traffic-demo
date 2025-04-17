@@ -22,9 +22,9 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       timestamp,
       endpoint,
       method: req.method,
-      ip: req.headers.get('x-forwarded-for') || 'unknown',
+       ip: req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown',
       userAgent: req.headers.get('user-agent') || 'unknown',
-      isBot: req.headers.get('x-is-bot') === 'true',
+      isBot: req.headers.get('x-kasada-classification') === 'bad-bot',
       statusCode: status,
       headers: Object.fromEntries(req.headers.entries())
     };
