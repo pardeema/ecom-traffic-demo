@@ -26,7 +26,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
         return xff.split(',')[0].trim();
       }
       // Fallback if XFF is not present (might be direct connection or different header)
-      return request.ip || 'unknown'; 
+      return 'unknown'; 
     };
 
     const clientIp = getClientIp(req);
@@ -42,7 +42,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       statusCode: status,
       headers: Object.fromEntries(req.headers.entries()) // Keep storing all headers for debugging if needed
     };
-    
+
     // Store the log entry as JSON
     await redis.set(logId, JSON.stringify(logEntry), { ex: 1800 }); // 30-minute expiration
     

@@ -14,8 +14,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
         return xff.split(',')[0].trim();
       }
       // Fallback if XFF is not present (might be direct connection or different header)
-      // Note: req.ip might be less reliable in Next.js Edge Runtime, XFF is preferred behind a proxy.
-      return request.ip || 'unknown'; 
+      return 'unknown'; 
     };
 
     const clientIp = getClientIp(req);
