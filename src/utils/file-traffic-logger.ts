@@ -8,31 +8,26 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
   try {
     // Helper function to get the client IP from headers
     const getClientIp = (request: NextRequest): string => {
+      // 1. Prioritize the X-Real-IP set by the Cloudflare Worker
+      const realIp = request.headers.get('x-real-ip'); // Header names are case-insensitive
+      if (realIp) {
+        console.log(`[getClientIp Debug] Using X-Real-IP: ${realIp}`);
+        return realIp;
+      }
+
+      // 2. Fallback to X-Forwarded-For (using previous logic, e.g., first IP if needed)
       const xff = request.headers.get('x-forwarded-for');
-      console.log(`[getClientIp Debug] Raw XFF header: ${xff}`); // Log the raw header
-
+      console.log(`[getClientIp Debug] Raw XFF header: ${xff}`); 
       if (xff) {
-        // Split by comma, trimming whitespace around IPs
         const ips = xff.split(',').map(ip => ip.trim());
-        console.log(`[getClientIp Debug] Split IPs: ${JSON.stringify(ips)}`); // Log the array of IPs
-
-        let chosenIp = 'unknown'; // Default value
-
-        // Check if there is a second IP address (index 1)
-        if (ips.length > 1 && ips[1]) {
-          chosenIp = ips[1]; // Return the second IP
-        }
-        // Fallback to the first IP if there's only one
-        else if (ips.length > 0 && ips[0]) {
-          chosenIp = ips[0]; 
-        }
-        
-        console.log(`[getClientIp Debug] Chosen IP: ${chosenIp}`); // Log the chosen IP
+        console.log(`[getClientIp Debug] Split IPs: ${JSON.stringify(ips)}`);
+        // Adjust logic here if you still need something specific from XFF as a fallback
+        const chosenIp = ips[0] || 'unknown'; // Example: fallback to first XFF IP
+        console.log(`[getClientIp Debug] Chosen IP from XFF: ${chosenIp}`);
         return chosenIp;
       }
       
-      // Fallback if XFF is not present or empty
-      console.log(`[getClientIp Debug] XFF header not found or empty, returning 'unknown'`);
+      console.log(`[getClientIp Debug] No suitable IP header found, returning 'unknown'`);
       return 'unknown'; 
     };
 
