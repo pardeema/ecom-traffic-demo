@@ -21,19 +21,30 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     // Helper function to get the client IP from headers
     const getClientIp = (request: NextRequest): string => {
       const xff = request.headers.get('x-forwarded-for');
+      console.log(`[getClientIp Debug] Raw XFF header: ${xff}`); // Log the raw header
+
       if (xff) {
         // Split by comma, trimming whitespace around IPs
         const ips = xff.split(',').map(ip => ip.trim());
+        console.log(`[getClientIp Debug] Split IPs: ${JSON.stringify(ips)}`); // Log the array of IPs
+
+        let chosenIp = 'unknown'; // Default value
+
         // Check if there is a second IP address (index 1)
         if (ips.length > 1 && ips[1]) {
-          return ips[1]; // Return the second IP
+          chosenIp = ips[1]; // Return the second IP
         }
         // Fallback to the first IP if there's only one
-        if (ips.length > 0 && ips[0]) {
-          return ips[0]; 
+        else if (ips.length > 0 && ips[0]) {
+          chosenIp = ips[0]; 
         }
+        
+        console.log(`[getClientIp Debug] Chosen IP: ${chosenIp}`); // Log the chosen IP
+        return chosenIp;
       }
+      
       // Fallback if XFF is not present or empty
+      console.log(`[getClientIp Debug] XFF header not found or empty, returning 'unknown'`);
       return 'unknown'; 
     };
     
