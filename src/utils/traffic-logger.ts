@@ -20,27 +20,41 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     
     // Helper function to get the client IP from headers
     const getClientIp = (request: NextRequest): string => {
-      // 1. Prioritize the X-Real-IP set by the Cloudflare Worker
-      const realIp = request.headers.get('x-real-ip'); // Header names are case-insensitive
-      if (realIp) {
-        console.log(`[getClientIp Debug] Using X-Real-IP: ${realIp}`);
-        return realIp;
+      let chosenIp = 'unknown'; // Default value
+
+      // 1. Check for Cloudflare's header first
+      const cfIp = request.headers.get('cf-connecting-ip');
+      if (cfIp) {
+        chosenIp = cfIp;
+        console.log(`[getClientIp Debug] Using CF-Connecting-IP: ${chosenIp}`);
+        return chosenIp;
       }
 
-      // 2. Fallback to X-Forwarded-For (using previous logic, e.g., first IP if needed)
+      // 2. Check for X-Real-IP (potentially set by CF worker, might be overwritten)
+      const realIp = request.headers.get('x-real-ip'); 
+      if (realIp) {
+        chosenIp = realIp;
+        console.log(`[getClientIp Debug] Using X-Real-IP: ${chosenIp}`);
+        return chosenIp;
+      }
+
+      // 3. Fallback to X-Forwarded-For (parsing first IP as last resort)
       const xff = request.headers.get('x-forwarded-for');
       console.log(`[getClientIp Debug] Raw XFF header: ${xff}`); 
       if (xff) {
+        // Split by comma, trimming whitespace around IPs
         const ips = xff.split(',').map(ip => ip.trim());
         console.log(`[getClientIp Debug] Split IPs: ${JSON.stringify(ips)}`);
-        // Adjust logic here if you still need something specific from XFF as a fallback
-        const chosenIp = ips[0] || 'unknown'; // Example: fallback to first XFF IP
-        console.log(`[getClientIp Debug] Chosen IP from XFF: ${chosenIp}`);
-        return chosenIp;
+        
+        if (ips.length > 0 && ips[0]) {
+           chosenIp = ips[0]; // Use the first IP from XFF
+           console.log(`[getClientIp Debug] Using first IP from XFF: ${chosenIp}`);
+           return chosenIp;
+        }
       }
       
       console.log(`[getClientIp Debug] No suitable IP header found, returning 'unknown'`);
-      return 'unknown'; 
+      return chosenIp; // Returns 'unknown' if no header found
     };
     
     const clientIp = getClientIp(req);
