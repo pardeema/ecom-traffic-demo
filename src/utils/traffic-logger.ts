@@ -22,10 +22,8 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       timestamp,
       endpoint,
       method: req.method,
-      // Extract first IP from x-forwarded-for chain
-      ip: req.headers.get('x-real-ip') || 
-         req.headers.get('cf-connecting-ip') || 
-         'unknown',
+      ip: req.headers.get('x-real-ip') || 'unknown', // JUST use x-real-ip
+      realIp: req.headers.get('x-real-ip') || 'unknown', // Add a dedicated field
       userAgent: req.headers.get('user-agent') || 'unknown',
       isBot: req.headers.get('x-kasada-classification') === 'bad-bot',
       statusCode: status,

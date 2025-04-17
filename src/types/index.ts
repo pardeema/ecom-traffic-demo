@@ -27,6 +27,7 @@ export interface TrafficLog {
   endpoint: string;
   method: string;
   ip: string;
+  realIp?: string; // Add this new field
   userAgent: string;
   isBot: boolean;
   statusCode?: number;

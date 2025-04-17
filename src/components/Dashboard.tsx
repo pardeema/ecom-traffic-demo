@@ -34,7 +34,7 @@ const RecentTrafficTable: React.FC<{ data: TrafficLog[] }> = ({ data }) => {
               <td>{new Date(item.timestamp).toLocaleTimeString()}</td>
               <td>{item.endpoint}</td>
               <td>{item.method}</td>
-              <td>{item.ip}</td> {/* Just use the extracted IP directly */}
+              <td>{item.realIp || item.headers?.["x-real-ip"] || item.ip}</td>
               <td>{item.statusCode || 'N/A'}</td>
             </tr>
           ))}
