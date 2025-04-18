@@ -56,7 +56,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       console.log(`[getClientIp Debug] No suitable IP header found, returning 'unknown'`);
       return chosenIp; // Returns 'unknown' if no header found
     };
-    
+
     const clientIp = getClientIp(req);
 
     const logEntry: TrafficLog = {
@@ -104,6 +104,7 @@ export async function getTrafficLogs(options: {
   timeWindow?: number;
   method?: string;
   isBot?: boolean;
+  since?: Date;
 } = {}): Promise<TrafficLog[]> {
   try {
     // Get all log IDs, sorted by time (newest first)
@@ -146,6 +147,11 @@ export async function getTrafficLogs(options: {
     
     if (options.isBot !== undefined) {
       logs = logs.filter(log => log.isBot === options.isBot);
+    }
+    
+    // Add timestamp filtering
+    if (options.since) {
+      logs = logs.filter(log => new Date(log.timestamp) > options.since);
     }
     
     return logs;

@@ -1,5 +1,5 @@
 // src/components/Dashboard.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import TrafficChart from './TrafficChart';
 import { TrafficLog } from '@/types';
 
@@ -77,34 +77,76 @@ const RecentTrafficTable: React.FC<{ data: TrafficLog[] }> = ({ data }) => {
 
 const Dashboard: React.FC = () => {
   const [timeWindow, setTimeWindow] = useState<number>(5);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  //store accumulated data
+  const [loginLogs, setLoginLogs] = useState<TrafficLog[]>([]);
+  const [checkoutLogs, setCheckoutLogs] = useState<TrafficLog[]>([]);
+  const [recentLogs, setRecentLogs] = useState<TrafficLog[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  
+
+  // Store the latest timestamp we've seen
+  const latestTimestampRef = useRef<string | null>(null);
+
+  // Incremental polling - only get new logs
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    if (loading) return; // Don't start polling until initial load is complete
+    
+    const fetchIncrementalData = async () => {
       try {
-        const response = await fetch(`/api/traffic/combined?timeWindow=${timeWindow}`);
+        // Only fetch logs newer than what we already have
+        const url = `/api/traffic/incremental?timeWindow=${timeWindow}${
+          latestTimestampRef.current ? `&since=${encodeURIComponent(latestTimestampRef.current)}` : ''
+        }`;
+        
+        const response = await fetch(url);
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
         }
         
         const data = await response.json();
-        setDashboardData(data);
-        setLoading(false);
+        
+        if (data.timestamp) {
+          latestTimestampRef.current = data.timestamp;
+        }
+        
+        // Merge new logs with existing logs
+        if (data.login && data.login.length > 0) {
+          setLoginLogs(prev => {
+            // Filter out logs that are older than the time window
+            const cutoffTime = new Date();
+            cutoffTime.setMinutes(cutoffTime.getMinutes() - timeWindow);
+            
+            // Combine existing and new logs, then filter by time window
+            const combined = [...prev, ...data.login];
+            return combined.filter(log => new Date(log.timestamp) >= cutoffTime);
+          });
+        }
+        
+        if (data.checkout && data.checkout.length > 0) {
+          setCheckoutLogs(prev => {
+            const cutoffTime = new Date();
+            cutoffTime.setMinutes(cutoffTime.getMinutes() - timeWindow);
+            
+            const combined = [...prev, ...data.checkout];
+            return combined.filter(log => new Date(log.timestamp) >= cutoffTime);
+          });
+        }
+        
+        // For recent logs, just take the most recent ones
+        if (data.recent && data.recent.length > 0) {
+          setRecentLogs(data.recent);
+        }
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('Error fetching incremental dashboard data:', error);
       }
     };
     
-    // Initial fetch
-    fetchDashboardData();
-    
-    // Set up polling at 5-second intervals
-    const intervalId = setInterval(fetchDashboardData, 5000);
+    // Poll every 5 seconds
+    const intervalId = setInterval(fetchIncrementalData, 5000);
     
     return () => clearInterval(intervalId);
-  }, [timeWindow]);
+  }, [timeWindow, loading]);
+
   
   if (loading) {
     return <div className="loading">Loading dashboard data...</div>;
@@ -123,17 +165,16 @@ const Dashboard: React.FC = () => {
           >
             <option value={1}>Last 1 minute</option>
             <option value={5}>Last 5 minutes</option>
-            <option value={15}>Last 15 minutes</option>
-            <option value={30}>Last 30 minutes</option>
+            <option value={10}>Last 10 minutes</option>
           </select>
         </div>
       </div>
       
-      <div className="charts-container">
+    <div className="charts-container">
         <div className="chart-section">
           <h2>Login Endpoint</h2>
           <TrafficChart 
-            data={dashboardData?.login || []} 
+            data={loginLogs} 
             endpoint="/api/auth/login" 
             timeWindow={timeWindow} 
           />
@@ -142,7 +183,7 @@ const Dashboard: React.FC = () => {
         <div className="chart-section">
           <h2>Checkout Endpoint</h2>
           <TrafficChart 
-            data={dashboardData?.checkout || []} 
+            data={checkoutLogs} 
             endpoint="/api/checkout" 
             timeWindow={timeWindow} 
           />
@@ -151,7 +192,7 @@ const Dashboard: React.FC = () => {
       
       <div className="recent-traffic">
         <h2>Recent Requests</h2>
-        <RecentTrafficTable data={dashboardData?.recent || []} />
+        <RecentTrafficTable data={recentLogs} />
       </div>
       
       <style jsx>{`
