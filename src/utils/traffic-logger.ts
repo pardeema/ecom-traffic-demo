@@ -151,9 +151,9 @@ export async function getTrafficLogs(options: {
     
     // Add timestamp filtering
     if (options.since) {
-      logs = logs.filter(log => new Date(log.timestamp) > options.since);
+      logs = logs.filter(log => new Date(log.timestamp) > options.since!);
     }
-    
+
     return logs;
   } catch (error) {
     console.error('Error retrieving traffic logs:', error);
