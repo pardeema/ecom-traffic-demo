@@ -86,6 +86,48 @@ const Dashboard: React.FC = () => {
   // Store the latest timestamp we've seen
   const latestTimestampRef = useRef<string | null>(null);
 
+  //get initial data
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const url = `/api/traffic/incremental?timeWindow=${timeWindow}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.timestamp) {
+          latestTimestampRef.current = data.timestamp;
+        }
+        
+        // Set initial data
+        if (data.login) {
+          setLoginLogs(data.login);
+        }
+        
+        if (data.checkout) {
+          setCheckoutLogs(data.checkout);
+        }
+        
+        if (data.recent) {
+          setRecentLogs(data.recent);
+        }
+        
+        // Set loading to false to allow polling to start
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching initial dashboard data:', error);
+        // Even if there's an error, set loading to false so polling can start
+        setLoading(false);
+      }
+    };
+    
+    fetchInitialData();
+  }, [timeWindow]); // Re-fetch initial data if timeWindow changes
+
   // Incremental polling - only get new logs
   useEffect(() => {
     if (loading) return; // Don't start polling until initial load is complete
@@ -194,7 +236,7 @@ const Dashboard: React.FC = () => {
         <h2>Recent Requests</h2>
         <RecentTrafficTable data={recentLogs} />
       </div>
-      
+
       <style jsx>{`
         .dashboard {
           padding: 20px;
