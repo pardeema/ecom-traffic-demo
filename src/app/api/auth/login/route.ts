@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     
     // Check if user exists and password matches (in a real app, use bcrypt)
     if (!user || (user as any).password !== body.password) {
+      console.log('Calling logTraffic for endpoint:', endpoint, 'with status:', status);
       await logTraffic(req, '/api/auth/login', 401);
       return NextResponse.json(
         { message: 'Invalid email or password' }, 
