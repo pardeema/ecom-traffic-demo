@@ -7,21 +7,29 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
 
-    // Get the 'since' parameter (timestamp in milliseconds)
+    // Get the 'since' parameter (timestamp string)
     const lastTimestampStr = url.searchParams.get('since');
-    const lastTimestampMs = lastTimestampStr ? parseInt(lastTimestampStr, 10) : undefined;
+    let lastTimestampMs: number | undefined = undefined; // Initialize
 
-    // Validate timestamp if provided
-    if (lastTimestampStr && isNaN(lastTimestampMs)) {
-        return NextResponse.json({ message: 'Invalid since timestamp' }, { status: 400 });
+    // Parse and validate the timestamp only if the parameter exists
+    if (lastTimestampStr) {
+        // Attempt parsing
+        lastTimestampMs = parseInt(lastTimestampStr, 10);
+        // Validate the *result* of parsing. isNaN checks if the parsing failed.
+        if (isNaN(lastTimestampMs)) {
+            // Handle invalid number format if 'since' was provided but wasn't a valid number
+            return NextResponse.json({ message: 'Invalid since timestamp format' }, { status: 400 });
+        }
     }
+    // Now, lastTimestampMs is either a valid number or undefined (if 'since' wasn't provided)
 
     // Define a limit for safety, e.g., max 100 logs per incremental fetch
     const limit = 100;
 
     // Fetch only logs newer than the lastTimestampMs using the optimized function
+    // Pass lastTimestampMs (which can be undefined for the initial fetch)
     const newLogs: TrafficLog[] = await getTrafficLogs({
-      since: lastTimestampMs, // Pass the timestamp in milliseconds
+      since: lastTimestampMs, // Pass the timestamp in milliseconds (or undefined)
       limit: limit,
       // Add other filters if needed (e.g., endpoint, method) based on query params
       // endpoint: url.searchParams.get('endpoint') || undefined,
@@ -31,22 +39,25 @@ export async function GET(req: NextRequest) {
     // Determine the timestamp of the newest log fetched (if any)
     let latestLogTimestampMs: number | null = null;
     if (newLogs.length > 0) {
-      // Logs are sorted newest first by getTrafficLogs
+      // Logs should be sorted newest first by getTrafficLogs
       latestLogTimestampMs = new Date(newLogs[0].timestamp).getTime();
     }
 
-    // If no new logs, use the 'since' value provided by the client for the next request
+    // Determine the timestamp to send back to the client for the next 'since' query.
+    // If new logs were found, use the latest timestamp from those logs.
+    // If no new logs were found, reuse the timestamp the client sent (if any).
+    // If it was the initial fetch (no 'since'), use the current time.
     const nextSinceTimestamp = latestLogTimestampMs ?? lastTimestampMs ?? Date.now();
+
 
     const response = NextResponse.json({
       logs: newLogs, // Send only the newly fetched logs
-      // Send the timestamp (in ms) of the latest log received in this batch.
-      // The client should use this value + 1ms for the *next* 'since' query param.
+      // Send the timestamp (in ms) that the client should use for the *next* 'since' query param.
       latestTimestamp: nextSinceTimestamp
     });
 
-    // Optional: Add cache control headers if appropriate
-    response.headers.set('Cache-Control', 'no-store'); // Prevent caching of incremental updates
+    // Prevent caching of incremental updates
+    response.headers.set('Cache-Control', 'no-store');
 
     return response;
 
@@ -58,4 +69,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
