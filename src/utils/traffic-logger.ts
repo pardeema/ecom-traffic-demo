@@ -12,6 +12,10 @@ const MAX_LOGS = 1000;
  * Log traffic data to Redis (Write operations)
  */
 export async function logTraffic(req: NextRequest, endpoint: string, status: number): Promise<void> {
+  // --- ADDED: Log entry into this function ---
+  console.log(`+++ ENTERING logTraffic function for ${endpoint} with status ${status} +++`);
+  // --- End Added Log ---
+
   try {
     const timestamp = new Date().toISOString();
     const logId = `${LOG_PREFIX}${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
@@ -47,16 +51,19 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     };
 
     // --- Perform Redis Write Operations ---
+    console.log(`Attempting Redis write for logId: ${logId}`); // Log before write
     const pipe = redis.pipeline();
-    // Ensure the value being set is definitely a stringified JSON
     pipe.set(logId, JSON.stringify(fullLogEntry), { ex: 1800 });
     pipe.zadd(LOGS_LIST_KEY, { score: score, member: logId });
     pipe.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
-    await pipe.exec();
+    const results = await pipe.exec();
+    console.log(`Redis pipeline results for ${logId}:`, results); // Log results
 
   } catch (error) {
     // Log specific errors during traffic logging
-    console.error(`Error logging traffic for ${endpoint}:`, error);
+    // --- MODIFIED: Make error log more prominent ---
+    console.error(`!!! ERROR in logTraffic function for ${endpoint} !!!`, error);
+    // --- End Modified Log ---
   }
 }
 
@@ -70,64 +77,68 @@ export async function getTrafficLogs(options: {
   since?: number;
   limit?: number;
 } = {}): Promise<TrafficLog[]> {
+    // --- ADDED: Log entry into this function ---
+    console.log(`--- ENTERING getTrafficLogs function with options:`, options);
+    // --- End Added Log ---
     try {
         let logIds: string[] = [];
         const minScore: number = options.since ? options.since + 1 : 0;
         const maxScore: number = Number.MAX_SAFE_INTEGER;
 
+        // Log parameters being used for zrange
+        console.log(`Querying Redis zrange with: key=${LOGS_LIST_KEY}, minScore=${minScore}, maxScore=${maxScore}`);
+
         logIds = await redis.zrange(LOGS_LIST_KEY, minScore, maxScore, {
             byScore: true,
         });
 
+        console.log(`Redis zrange returned ${logIds.length} IDs.`);
+
         if (options.limit && logIds.length > options.limit) {
+            console.log(`Limiting log IDs from ${logIds.length} to ${options.limit}`);
             logIds = logIds.slice(-options.limit);
         }
 
         if (logIds.length === 0) {
+            console.log(`No log IDs found for the given range. Returning empty array.`);
             return [];
         }
 
+        console.log(`Attempting Redis mget for ${logIds.length} IDs.`);
         const logData = await redis.mget(...logIds);
+        console.log(`Redis mget returned data (length: ${logData?.length ?? 0}). Filtering and parsing...`);
+
 
         // Filter out nulls AND non-strings, then safely parse JSON
         const logs: TrafficLog[] = logData
-            // 1. Ensure the item is actually a string before trying to parse
             .filter((data): data is string => typeof data === 'string')
-            // 2. Map and parse, catching errors for individual entries
             .map((data: string, index: number): TrafficLog | null => {
                 try {
-                    // Attempt to parse the string data
                     return JSON.parse(data) as TrafficLog;
                 } catch (parseError) {
-                    // Log the problematic data and the error
                     console.error(`Failed to parse log entry at index ${index} (ID: ${logIds[index] || 'unknown'}):`, parseError);
-                    console.error('Problematic data string:', data); // Log the bad string
-                    // Return null for entries that fail parsing
+                    console.error('Problematic data string:', data);
                     return null;
                 }
             })
-            // 3. Filter out any entries that failed parsing (became null)
             .filter((log): log is TrafficLog => log !== null);
 
+        console.log(`Successfully parsed ${logs.length} log entries.`);
 
         // Apply remaining filters (endpoint, method, isBot) after fetching/parsing
         let filteredLogs = logs;
-        if (options.endpoint) {
-            filteredLogs = filteredLogs.filter(log => log.endpoint === options.endpoint);
-        }
-        if (options.method) {
-            filteredLogs = filteredLogs.filter(log => log.method === options.method);
-        }
-        if (options.isBot !== undefined) {
-            filteredLogs = filteredLogs.filter(log => log.isBot === options.isBot);
-        }
+        // Add logging for filtering steps if needed
+        // ...
 
         // Return logs sorted newest first
-        return filteredLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        const sortedLogs = filteredLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        console.log(`Returning ${sortedLogs.length} sorted logs from getTrafficLogs.`);
+        return sortedLogs;
+
 
     } catch (error) {
         // Log errors during the retrieval process
-        console.error('Error retrieving traffic logs:', error);
+        console.error('!!! ERROR retrieving traffic logs !!!', error);
         return []; // Return empty array on error
     }
 }
