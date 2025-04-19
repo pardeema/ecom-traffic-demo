@@ -50,19 +50,9 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
 
     // --- Perform Redis Write Operations Sequentially ---
     const jsonData = JSON.stringify(fullLogEntry);
-    // console.log(`Writing to Redis key ${logId} with score ${score}, data: ${jsonData.substring(0, 100)}...`);
-
-    // console.log(`Attempting Redis SET for ${logId}`);
     const setResult = await redis.set(logId, jsonData, { ex: 1800 });
-    // console.log(`Redis SET Result for ${logId}:`, setResult);
-
-    // console.log(`Attempting Redis ZADD for ${logId} with score ${score}`);
     const zaddResult = await redis.zadd(LOGS_LIST_KEY, { score: score, member: logId });
-    // console.log(`Redis ZADD Result for ${logId}:`, zaddResult);
-
-    // console.log(`Attempting Redis ZREMRANGEBYRANK for ${LOGS_LIST_KEY}`);
     const zremResult = await redis.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
-    // console.log(`Redis ZREMRANGEBYRANK Result:`, zremResult);
 
   } catch (error) {
     console.error(`!!! ERROR in logTraffic function for ${endpoint} !!!`, error);
@@ -85,40 +75,31 @@ export async function getTrafficLogs(options: {
         const minScore: number = options.since ? options.since + 1 : 0;
         const maxScore: number = Number.MAX_SAFE_INTEGER;
 
-        // console.log(`Querying Redis zrange with: key=${LOGS_LIST_KEY}, minScore=${minScore}, maxScore=${maxScore}`);
         logIds = await redis.zrange(LOGS_LIST_KEY, minScore, maxScore, {
             byScore: true,
         });
-        // console.log(`Redis zrange returned ${logIds.length} IDs.`);
 
         if (options.limit && logIds.length > options.limit) {
-            // console.log(`Limiting log IDs from ${logIds.length} to ${options.limit}`);
             logIds = logIds.slice(-options.limit);
         }
 
         if (logIds.length === 0) {
-            // console.log(`No log IDs found for the given range. Returning empty array.`);
             return [];
         }
 
-        // console.log(`Attempting Redis mget for ${logIds.length} IDs.`);
-        // mget returns (unknown | null)[] - items can be objects if auto-deserialized
         const logData: (unknown | null)[] = await redis.mget(...logIds);
-        // console.log(`Redis mget returned data (length: ${logData?.length ?? 0}). Filtering...`);
 
-
-        // --- MODIFIED: Filter for non-null objects and assert type ---
         const logs: TrafficLog[] = logData
             // 1. Filter out null values and ensure the item is an object
             .filter((data): data is Record<string, unknown> => data !== null && typeof data === 'object')
-            // 2. Assert the object shape as TrafficLog (no parsing needed)
+            // 2. Assert the object shape as TrafficLog via unknown
             .map((data: Record<string, unknown>): TrafficLog => {
-                // Add runtime checks here if needed for extra safety, otherwise just assert
-                return data as TrafficLog;
+                // --- MODIFIED: Use intermediate 'unknown' assertion ---
+                return data as unknown as TrafficLog;
+                // --- End Modification ---
             });
-        // --- End Modification ---
 
-        console.log(`Successfully processed ${logs.length} log entries from mget results.`);
+        // console.log(`Successfully processed ${logs.length} log entries from mget results.`);
 
 
         // Apply remaining filters (endpoint, method, isBot) after fetching/parsing
