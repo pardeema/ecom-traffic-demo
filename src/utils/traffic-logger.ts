@@ -10,10 +10,10 @@ const MAX_LOGS = 1000;
 
 /**
  * Log traffic data to Redis (Write operations - Using Sequential Commands)
- * NO CHANGES HERE - Keep the sequential version
  */
 export async function logTraffic(req: NextRequest, endpoint: string, status: number): Promise<void> {
-  console.log(`+++ ENTERING logTraffic function for ${endpoint} with status ${status} +++`);
+  // Keep essential entry log for debugging if needed
+  // console.log(`+++ ENTERING logTraffic function for ${endpoint} with status ${status} +++`);
   try {
     const timestamp = new Date().toISOString();
     const logId = `${LOG_PREFIX}${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
@@ -50,22 +50,19 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
 
     // --- Perform Redis Write Operations Sequentially ---
     const jsonData = JSON.stringify(fullLogEntry);
-    console.log(`Writing to Redis key ${logId} with score ${score}, data: ${jsonData.substring(0, 100)}...`);
+    // console.log(`Writing to Redis key ${logId} with score ${score}, data: ${jsonData.substring(0, 100)}...`);
 
-    // 1. Set the log entry data
-    console.log(`Attempting Redis SET for ${logId}`);
+    // console.log(`Attempting Redis SET for ${logId}`);
     const setResult = await redis.set(logId, jsonData, { ex: 1800 });
-    console.log(`Redis SET Result for ${logId}:`, setResult);
+    // console.log(`Redis SET Result for ${logId}:`, setResult);
 
-    // 2. Add the ID to the sorted set
-    console.log(`Attempting Redis ZADD for ${logId} with score ${score}`);
+    // console.log(`Attempting Redis ZADD for ${logId} with score ${score}`);
     const zaddResult = await redis.zadd(LOGS_LIST_KEY, { score: score, member: logId });
-    console.log(`Redis ZADD Result for ${logId}:`, zaddResult);
+    // console.log(`Redis ZADD Result for ${logId}:`, zaddResult);
 
-    // 3. Trim the sorted set
-    console.log(`Attempting Redis ZREMRANGEBYRANK for ${LOGS_LIST_KEY}`);
+    // console.log(`Attempting Redis ZREMRANGEBYRANK for ${LOGS_LIST_KEY}`);
     const zremResult = await redis.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
-    console.log(`Redis ZREMRANGEBYRANK Result:`, zremResult);
+    // console.log(`Redis ZREMRANGEBYRANK Result:`, zremResult);
 
   } catch (error) {
     console.error(`!!! ERROR in logTraffic function for ${endpoint} !!!`, error);
@@ -73,63 +70,58 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
 }
 
 /**
- * Get historical traffic logs (TESTING WITH redis.get)
+ * Get historical traffic logs (Handles auto-deserialized objects from Upstash client)
  */
 export async function getTrafficLogs(options: {
   endpoint?: string;
   method?: string;
   isBot?: boolean;
   since?: number;
-  limit?: number; // Limit still used for slicing IDs if needed later
+  limit?: number;
 } = {}): Promise<TrafficLog[]> {
-    console.log(`--- ENTERING getTrafficLogs function with options:`, options);
+    // console.log(`--- ENTERING getTrafficLogs function with options:`, options);
     try {
         let logIds: string[] = [];
         const minScore: number = options.since ? options.since + 1 : 0;
         const maxScore: number = Number.MAX_SAFE_INTEGER;
 
-        console.log(`Querying Redis zrange with: key=${LOGS_LIST_KEY}, minScore=${minScore}, maxScore=${maxScore}`);
+        // console.log(`Querying Redis zrange with: key=${LOGS_LIST_KEY}, minScore=${minScore}, maxScore=${maxScore}`);
         logIds = await redis.zrange(LOGS_LIST_KEY, minScore, maxScore, {
             byScore: true,
         });
-        console.log(`Redis zrange returned ${logIds.length} IDs.`);
+        // console.log(`Redis zrange returned ${logIds.length} IDs.`);
 
-        // --- MODIFIED: Test with GET on the latest ID only ---
-        let logs: TrafficLog[] = [];
-        if (logIds.length > 0) {
-            // Get the ID of the newest log found by zrange (last item since it's ascending)
-            const latestLogId = logIds[logIds.length - 1];
-            console.log(`Attempting Redis GET for latest ID: ${latestLogId}`);
-            // Use redis.get() which might return string | null | Buffer depending on client/config
-            const singleLogData: string | null | Record<string, unknown> | Buffer = await redis.get(latestLogId);
-
-            console.log(`Redis GET result for ${latestLogId}: Type = ${typeof singleLogData}, Value =`, singleLogData);
-
-            if (typeof singleLogData === 'string') {
-                 console.log(`Data for ${latestLogId} is a string. Attempting parse...`);
-                 try {
-                    const parsedLog = JSON.parse(singleLogData) as TrafficLog;
-                    logs.push(parsedLog); // Add the single parsed log
-                    console.log(`Successfully parsed log for ${latestLogId}`);
-                 } catch (parseError) {
-                    console.error(`Failed to parse log entry (ID: ${latestLogId}):`, parseError);
-                    console.error('Problematic data string:', singleLogData);
-                 }
-            } else if (singleLogData === null) {
-                 console.log(`Data for ${latestLogId} returned null from GET.`);
-            } else {
-                 console.log(`Data for ${latestLogId} is not a string or null.`);
-                 // Optional: Handle buffer case if necessary
-                 // if (Buffer.isBuffer(singleLogData)) { ... }
-            }
-        } else {
-             console.log(`No log IDs found for the given range. Returning empty array.`);
-             return []; // Return early if zrange found nothing
+        if (options.limit && logIds.length > options.limit) {
+            // console.log(`Limiting log IDs from ${logIds.length} to ${options.limit}`);
+            logIds = logIds.slice(-options.limit);
         }
+
+        if (logIds.length === 0) {
+            // console.log(`No log IDs found for the given range. Returning empty array.`);
+            return [];
+        }
+
+        // console.log(`Attempting Redis mget for ${logIds.length} IDs.`);
+        // mget returns (unknown | null)[] - items can be objects if auto-deserialized
+        const logData: (unknown | null)[] = await redis.mget(...logIds);
+        // console.log(`Redis mget returned data (length: ${logData?.length ?? 0}). Filtering...`);
+
+
+        // --- MODIFIED: Filter for non-null objects and assert type ---
+        const logs: TrafficLog[] = logData
+            // 1. Filter out null values and ensure the item is an object
+            .filter((data): data is Record<string, unknown> => data !== null && typeof data === 'object')
+            // 2. Assert the object shape as TrafficLog (no parsing needed)
+            .map((data: Record<string, unknown>): TrafficLog => {
+                // Add runtime checks here if needed for extra safety, otherwise just assert
+                return data as TrafficLog;
+            });
         // --- End Modification ---
 
+        console.log(`Successfully processed ${logs.length} log entries from mget results.`);
 
-        // Apply remaining filters (endpoint, method, isBot) to the potentially single log entry
+
+        // Apply remaining filters (endpoint, method, isBot) after fetching/parsing
         let filteredLogs = logs;
         if (options.endpoint) {
             filteredLogs = filteredLogs.filter(log => log.endpoint === options.endpoint);
@@ -141,9 +133,10 @@ export async function getTrafficLogs(options: {
             filteredLogs = filteredLogs.filter(log => log.isBot === options.isBot);
         }
 
-        // No need to sort if we only fetched one item
-        console.log(`Returning ${filteredLogs.length} logs from getTrafficLogs (after GET test).`);
-        return filteredLogs;
+        // Return logs sorted newest first
+        const sortedLogs = filteredLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        // console.log(`Returning ${sortedLogs.length} sorted logs from getTrafficLogs.`);
+        return sortedLogs;
 
     } catch (error) {
         console.error('!!! ERROR retrieving traffic logs !!!', error);
