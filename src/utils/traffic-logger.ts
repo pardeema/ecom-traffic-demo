@@ -9,7 +9,7 @@ const LOGS_LIST_KEY = 'traffic:logs';
 const MAX_LOGS = 1000;
 
 /**
- * Log traffic data to Redis (Write operations)
+ * Log traffic data to Redis (Write operations - Using Sequential Commands)
  */
 export async function logTraffic(req: NextRequest, endpoint: string, status: number): Promise<void> {
   console.log(`+++ ENTERING logTraffic function for ${endpoint} with status ${status} +++`);
@@ -47,18 +47,24 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       headers: Object.fromEntries(req.headers.entries())
     };
 
-    // --- Perform Redis Write Operations ---
-    console.log(`Attempting Redis write for logId: ${logId}`);
-    const pipe = redis.pipeline();
-    const jsonData = JSON.stringify(fullLogEntry); // Stringify once
-    // --- ADDED: Log the data being written ---
-    console.log(`Writing to Redis key ${logId} with score ${score}, data: ${jsonData.substring(0, 100)}...`); // Log first 100 chars
-    // --- End Added Log ---
-    pipe.set(logId, jsonData, { ex: 1800 });
-    pipe.zadd(LOGS_LIST_KEY, { score: score, member: logId });
-    pipe.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
-    const results = await pipe.exec();
-    console.log(`Redis pipeline results for ${logId}:`, results);
+    // --- Perform Redis Write Operations Sequentially ---
+    const jsonData = JSON.stringify(fullLogEntry);
+    console.log(`Writing to Redis key ${logId} with score ${score}, data: ${jsonData.substring(0, 100)}...`);
+
+    // 1. Set the log entry data
+    console.log(`Attempting Redis SET for ${logId}`);
+    const setResult = await redis.set(logId, jsonData, { ex: 1800 }); // Keep expiration for now
+    console.log(`Redis SET Result for ${logId}:`, setResult); // Should be 'OK'
+
+    // 2. Add the ID to the sorted set
+    console.log(`Attempting Redis ZADD for ${logId} with score ${score}`);
+    const zaddResult = await redis.zadd(LOGS_LIST_KEY, { score: score, member: logId });
+    console.log(`Redis ZADD Result for ${logId}:`, zaddResult); // Should be 1 if added, 0 if updated
+
+    // 3. Trim the sorted set
+    console.log(`Attempting Redis ZREMRANGEBYRANK for ${LOGS_LIST_KEY}`);
+    const zremResult = await redis.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
+    console.log(`Redis ZREMRANGEBYRANK Result:`, zremResult); // Number of elements removed
 
   } catch (error) {
     console.error(`!!! ERROR in logTraffic function for ${endpoint} !!!`, error);
@@ -67,6 +73,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
 
 /**
  * Get historical traffic logs (Optimized & Robust Parsing)
+ * NO CHANGES HERE - Keep the version that inspects mget results
  */
 export async function getTrafficLogs(options: {
   endpoint?: string;
@@ -101,26 +108,17 @@ export async function getTrafficLogs(options: {
         const logData = await redis.mget(...logIds);
         console.log(`Redis mget returned data (length: ${logData?.length ?? 0}). Filtering and parsing...`);
 
-        // --- ADDED: Inspect raw mget results ---
+        // Inspect raw mget results
         if (logData && logData.length > 0) {
             console.log(`Inspecting first item from mget: Type = ${typeof logData[0]}, Value =`, logData[0]);
-            // If it might be a buffer, try logging its toString()
             if (typeof logData[0] !== 'string' && logData[0] !== null && typeof (logData[0] as any).toString === 'function') {
                  console.log(`Inspecting first item from mget (as string):`, (logData[0] as any).toString());
             }
         }
-        // --- End Added Log ---
 
-
-        // Filter out nulls AND non-strings, then safely parse JSON
+        // Filter/Parse Logic (keep robust version)
         const logs: TrafficLog[] = logData
-            .filter((data): data is string => {
-                const isString = typeof data === 'string';
-                // --- ADDED: Log filter results ---
-                // console.log(`Filtering mget item: Type=${typeof data}, Value=${data}, IsString=${isString}`); // Can be very verbose
-                // --- End Added Log ---
-                return isString;
-            })
+            .filter((data): data is string => typeof data === 'string')
             .map((data: string, index: number): TrafficLog | null => {
                 try {
                     return JSON.parse(data) as TrafficLog;
@@ -134,6 +132,7 @@ export async function getTrafficLogs(options: {
 
         console.log(`Successfully parsed ${logs.length} log entries.`);
 
+        // Filtering Logic
         let filteredLogs = logs;
         if (options.endpoint) {
             filteredLogs = filteredLogs.filter(log => log.endpoint === options.endpoint);
@@ -145,6 +144,7 @@ export async function getTrafficLogs(options: {
             filteredLogs = filteredLogs.filter(log => log.isBot === options.isBot);
         }
 
+        // Sorting Logic
         const sortedLogs = filteredLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         console.log(`Returning ${sortedLogs.length} sorted logs from getTrafficLogs.`);
         return sortedLogs;
