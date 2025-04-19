@@ -78,18 +78,13 @@ export async function getTrafficLogs(options: {
         // Pass numbers directly to zrange. Add 1ms to 'since' to make the range effectively exclusive.
         // Use 0 as the minimum score if 'since' is not provided (start of epoch time).
         const minScore: number = options.since ? options.since + 1 : 0;
-        // Use '+inf' string for the maximum score, which is generally accepted by clients.
-        const maxScore: string = '+inf';
+        // Use a very large number instead of '+inf' string for max score to satisfy stricter types.
+        const maxScore: number = Number.MAX_SAFE_INTEGER;
 
         // Fetch IDs using ZRANGE BYSCORE, ordered by score (time) ascending
-        // Pass numeric minScore and string maxScore
+        // Pass numeric minScore and numeric maxScore
         logIds = await redis.zrange(LOGS_LIST_KEY, minScore, maxScore, {
             byScore: true,
-            // Note: Limit is applied *after* fetching IDs by score range here.
-            // For very high traffic, fetching potentially many IDs and slicing
-            // might be less efficient than using ZREVRANGE with REV + LIMIT if only
-            // the absolute newest N items are ever needed, regardless of 'since'.
-            // But for incremental fetching based on 'since', this approach is correct.
         });
 
         // Apply limit if specified, taking the newest ones (last N elements from ascending fetch)
@@ -122,7 +117,7 @@ export async function getTrafficLogs(options: {
         }
 
         // Return logs sorted newest first
-        return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return logs.sort((a, b) => new Date(b.timestamp).getTime() - new D ate(a.timestamp).getTime());
 
     } catch (error) {
         console.error('Error retrieving traffic logs:', error);
