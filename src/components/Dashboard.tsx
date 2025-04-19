@@ -73,8 +73,11 @@ const Dashboard: React.FC = () => {
 
   // --- Function to process new logs and update state ---
   const processNewLogs = (newLogs: TrafficLog[]) => {
-    if (!newLogs || newLogs.length === 0) return;
-
+    if (!newLogs || newLogs.length === 0) {
+      console.log("processNewLogs received no new logs.");
+      return;
+    };
+    console.log(`processNewLogs received ${newLogs.length} new log(s) to prepend.`);
     const newLoginLogs = newLogs.filter(log => log.endpoint === '/api/auth/login');
     const newCheckoutLogs = newLogs.filter(log => log.endpoint === '/api/checkout');
 
@@ -99,8 +102,8 @@ const Dashboard: React.FC = () => {
       // Add 1ms to 'since' to avoid fetching the same last event again (exclusive)
       url += `?since=${currentLatestTimestamp + 1}`;
     }
-    // Note: timeWindow parameter is removed from the URL
 
+    console.log(`Fetching updates: ${url}`);
     try {
       const response = await fetch(url);
       if (!response.ok) {
@@ -112,6 +115,11 @@ const Dashboard: React.FC = () => {
         throw new Error(`API error! status: ${response.status}`);
       }
       const data: { logs: TrafficLog[], latestTimestamp: number } = await response.json();
+
+      console.log(`API Response for ${url}:`, {
+          logsReceived: data.logs, // See exactly what logs the API returned
+          latestTimestampReceived: data.latestTimestamp
+      });
 
       // Process the received logs
       processNewLogs(data.logs);
