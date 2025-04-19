@@ -117,7 +117,7 @@ export async function getTrafficLogs(options: {
         }
 
         // Return logs sorted newest first
-        return logs.sort((a, b) => new Date(b.timestamp).getTime() - new D ate(a.timestamp).getTime());
+        return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     } catch (error) {
         console.error('Error retrieving traffic logs:', error);
