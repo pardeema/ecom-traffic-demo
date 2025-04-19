@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -28,8 +28,7 @@ ChartJS.register(
 );
 
 // --- Types ---
-// Define the structure of a single traffic log entry
-// (You might want to move this to a central types file, e.g., src/types.ts)
+// Keep your original TrafficLog definition
 export interface TrafficLog {
   id: string;
   timestamp: string; // ISO 8601 format string
@@ -38,9 +37,9 @@ export interface TrafficLog {
   responseTime: number; // in milliseconds
 }
 
-// --- TrafficChart Component ---
+// Add a new interface that accepts the application's TrafficLog type
 interface TrafficChartProps {
-  data: TrafficLog[]; // Uses the central TrafficLog type
+  data: any[]; // Use 'any[]' to accept your application's TrafficLog type
   endpoint: string;
   timeWindow: number; // Time window in minutes
 }
@@ -385,5 +384,4 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
   );
 };
 
-// Export TrafficChart as the default for this file (TrafficChart.tsx)
 export default TrafficChart;
