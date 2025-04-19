@@ -48,17 +48,10 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     };
 
     // --- Perform Redis Write Operations ---
-    // Use a pipeline for atomic operations or Promise.allSettled if atomicity isn't critical
     const pipe = redis.pipeline();
-    // a) Store the full log entry with expiration
-    pipe.set(logId, JSON.stringify(fullLogEntry), { ex: 1800 }); // e.g., 30-minute expiration
-    // b) Add log ID to the sorted set with timestamp score
+    pipe.set(logId, JSON.stringify(fullLogEntry), { ex: 1800 });
     pipe.zadd(LOGS_LIST_KEY, { score: score, member: logId });
-    // c) Trim the sorted set to keep only the latest MAX_LOGS entries
-    pipe.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1)); // Remove items beyond MAX_LOGS count
-    // d) Optionally, trim associated log entries (more complex, requires getting keys to delete)
-    //    For simplicity, we rely on the `set` expiration (step a) to clean up old entries.
-
+    pipe.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
     await pipe.exec();
 
   } catch (error) {
@@ -74,31 +67,34 @@ export async function getTrafficLogs(options: {
   endpoint?: string;
   method?: string;
   isBot?: boolean;
-  since?: number; // Timestamp in milliseconds (exclusive)
+  since?: number; // Timestamp in milliseconds (exclusive lower bound)
   limit?: number; // Max number of logs to return
 } = {}): Promise<TrafficLog[]> {
     try {
         let logIds: string[] = [];
 
-        // Define the score range for ZRANGE
-        // Fetch logs with score > options.since up to +infinity
-        // We add a small epsilon (1ms) to 'since' to make it exclusive
-        const minScore = options.since ? `(${options.since}` : '-inf'; // Exclusive range using '('
-        const maxScore = '+inf';
+        // --- Define the score range for ZRANGE ---
+        // We want scores *strictly greater than* options.since.
+        // Pass numbers directly to zrange. Add 1ms to 'since' to make the range effectively exclusive.
+        // Use 0 as the minimum score if 'since' is not provided (start of epoch time).
+        const minScore: number = options.since ? options.since + 1 : 0;
+        // Use '+inf' string for the maximum score, which is generally accepted by clients.
+        const maxScore: string = '+inf';
 
         // Fetch IDs using ZRANGE BYSCORE, ordered by score (time) ascending
-        // We fetch ascending to easily get the latest timestamp later if needed,
-        // but will reverse for the final output if newest-first is desired.
+        // Pass numeric minScore and string maxScore
         logIds = await redis.zrange(LOGS_LIST_KEY, minScore, maxScore, {
             byScore: true,
-            // Note: ZRANGE doesn't directly support limit with BYSCORE in all clients/versions easily.
-            // We might fetch more IDs than needed and limit later, or use ZREVRANGE with limit if always newest-first.
-            // Let's fetch all matching scores and limit in code for now.
-            // Alternatively, use ZREVRANGE with limit if only newest N are needed.
+            // Note: Limit is applied *after* fetching IDs by score range here.
+            // For very high traffic, fetching potentially many IDs and slicing
+            // might be less efficient than using ZREVRANGE with REV + LIMIT if only
+            // the absolute newest N items are ever needed, regardless of 'since'.
+            // But for incremental fetching based on 'since', this approach is correct.
         });
 
-        // Apply limit if specified, taking the newest ones (last N elements)
+        // Apply limit if specified, taking the newest ones (last N elements from ascending fetch)
         if (options.limit && logIds.length > options.limit) {
+            // Since fetched ascending, the newest are at the end.
             logIds = logIds.slice(-options.limit);
         }
 
