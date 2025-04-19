@@ -190,28 +190,36 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
                     if (label) {
                         label += ': ';
                     }
-                    // Use context.formattedValue for built-in formatting
-                    // Use context.parsed.y for line/bar vertical value
-                    // Use context.parsed.x for horizontal bar value
-                    if (context.chart.config.type === 'bar' && context.parsed.x !== null) {
-                         label += context.formattedValue;
-                    } else if (context.chart.config.type === 'line' && context.parsed.y !== null) {
-                         label += context.formattedValue;
+                    
+                    // Fix: Check for parsed values directly without checking chart type
+                    if (context.parsed.x !== undefined && context.parsed.y === undefined) {
+                        // For horizontal bar chart
+                        label += context.formattedValue;
+                    } else if (context.parsed.y !== undefined) {
+                        // For line chart or vertical bar chart
+                        label += context.formattedValue;
                     }
+                    
                     return label;
                 },
-                 // Customize tooltip title (optional)
-                 title: function(tooltipItems: TooltipItem<any>[]) {
+                // Customize tooltip title (optional)
+                title: function(tooltipItems: TooltipItem<any>[]) {
+                    if (!tooltipItems.length) return '';
+                    
+                    // Get the chart type from context
+                    const chartType = chartType;
+                    
                     // For line chart, show the time label
-                    if (tooltipItems[0]?.chart.config.type === 'line') {
+                    if (chartType === 'line') {
                         return `Time: ${tooltipItems[0].label}`;
                     }
                     // For bar chart, show the status code
-                    if (tooltipItems[0]?.chart.config.type === 'bar') {
+                    if (chartType === 'bar') {
                         return `Status Code: ${tooltipItems[0].label}`;
                     }
-                    return '';
-                 }
+                    
+                    return tooltipItems[0].label || '';
+                }
             }
         }
       }
