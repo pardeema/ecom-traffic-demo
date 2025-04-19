@@ -157,6 +157,40 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
   }, [data]); // Recalculate only when data changes
 
   // --- Chart Options ---
+  // Create line and bar specific tooltip callbacks
+  const getLineChartTooltipCallbacks = () => ({
+    label: function(context: TooltipItem<any>) {
+      let label = context.dataset.label || '';
+      if (label) {
+        label += ': ';
+      }
+      if (context.parsed.y !== undefined) {
+        label += context.formattedValue;
+      }
+      return label;
+    },
+    title: function(tooltipItems: TooltipItem<any>[]) {
+      if (!tooltipItems.length) return '';
+      return `Time: ${tooltipItems[0].label}`;
+    }
+  });
+
+  const getBarChartTooltipCallbacks = () => ({
+    label: function(context: TooltipItem<any>) {
+      let label = context.dataset.label || '';
+      if (label) {
+        label += ': ';
+      }
+      if (context.parsed.x !== undefined) {
+        label += context.formattedValue;
+      }
+      return label;
+    },
+    title: function(tooltipItems: TooltipItem<any>[]) {
+      if (!tooltipItems.length) return '';
+      return `Status Code: ${tooltipItems[0].label}`;
+    }
+  });
 
   const commonOptions: Partial<ChartOptions> = {
       responsive: true,
@@ -183,44 +217,6 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
             padding: 10,
             cornerRadius: 4,
             displayColors: true, // Show color box in tooltip
-            callbacks: {
-                // Customize tooltip label for both chart types
-                label: function(context: TooltipItem<any>) {
-                    let label = context.dataset.label || '';
-                    if (label) {
-                        label += ': ';
-                    }
-                    
-                    // Fix: Check for parsed values directly without checking chart type
-                    if (context.parsed.x !== undefined && context.parsed.y === undefined) {
-                        // For horizontal bar chart
-                        label += context.formattedValue;
-                    } else if (context.parsed.y !== undefined) {
-                        // For line chart or vertical bar chart
-                        label += context.formattedValue;
-                    }
-                    
-                    return label;
-                },
-                // Customize tooltip title (optional)
-                title: function(tooltipItems: TooltipItem<any>[]) {
-                    if (!tooltipItems.length) return '';
-                    
-                    // Get the chart type from context
-                    const chartType = chartType;
-                    
-                    // For line chart, show the time label
-                    if (chartType === 'line') {
-                        return `Time: ${tooltipItems[0].label}`;
-                    }
-                    // For bar chart, show the status code
-                    if (chartType === 'bar') {
-                        return `Status Code: ${tooltipItems[0].label}`;
-                    }
-                    
-                    return tooltipItems[0].label || '';
-                }
-            }
         }
       }
   };
@@ -270,10 +266,14 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         padding: { bottom: 15 },
         align: 'start' as const,
       },
-       legend: {
-           ...(commonOptions.plugins?.legend || {}), // Ensure legend object exists
-           display: true // Show legend for line chart
-       }
+      legend: {
+        ...(commonOptions.plugins?.legend || {}), // Ensure legend object exists
+        display: true // Show legend for line chart
+      },
+      tooltip: {
+        ...(commonOptions.plugins?.tooltip || {}),
+        callbacks: getLineChartTooltipCallbacks()
+      }
     },
   };
 
@@ -324,6 +324,10 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
               ...(commonOptions.plugins?.legend || {}), // Ensure legend object exists
               display: false, // Hide legend for bar chart (colors are self-explanatory)
           },
+          tooltip: {
+            ...(commonOptions.plugins?.tooltip || {}),
+            callbacks: getBarChartTooltipCallbacks()
+          }
       },
   };
 
