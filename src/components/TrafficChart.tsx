@@ -40,27 +40,36 @@ export interface TrafficLog {
 
 // --- TrafficChart Component ---
 interface TrafficChartProps {
-  data: TrafficLog[]; // Data is passed directly from the parent
-  endpoint: string; // Used for the chart title
+  data: TrafficLog[]; // Uses the central TrafficLog type
+  endpoint: string;
   timeWindow: number; // Time window in minutes
 }
 
 const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow }) => {
   // State to toggle between chart types
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
+  
+  // Force chart refresh every 10 seconds to move the time window even without new data
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  
+  useEffect(() => {
+    // Create a timer to force chart refresh
+    const timer = setInterval(() => {
+      setRefreshTrigger(prev => prev + 1);
+    }, 10000);
+    
+    return () => clearInterval(timer); // Clean up on unmount
+  }, []);
 
   // --- Memoized Data Preparation ---
-
-  // Memoize time series data calculation to avoid recomputing on every render
   const timeSeriesData = useMemo(() => {
     console.log("Recalculating time series data..."); // Log to see when it runs
     // Create time buckets (every 10 seconds within the time window)
-    const now = new Date();
+    const now = new Date(); // Always use current time as reference
     const buckets: { time: Date; count: number }[] = [];
     const bucketIntervalSeconds = 10;
     // Ensure at least one bucket even for very small time windows
     const totalBuckets = Math.max(1, Math.floor((timeWindow * 60) / bucketIntervalSeconds));
-
 
     // Initialize buckets going back in time
     for (let i = totalBuckets; i >= 0; i--) {
@@ -107,7 +116,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         },
       ],
     };
-  }, [data, timeWindow]); // Recalculate only when data or timeWindow changes
+  }, [data, timeWindow, refreshTrigger]); // Add refreshTrigger to dependencies
 
   // Memoize response code data calculation
   const responseCodeData = useMemo(() => {
