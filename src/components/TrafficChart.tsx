@@ -134,7 +134,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     };
   }, [data]);
   
-  // Line chart options
+  // Line chart options (simplified to avoid TypeScript issues)
   const lineChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -170,23 +170,13 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       legend: {
         display: true,
       },
-      tooltip: {
-        callbacks: {
-          title: function(tooltipItems: Array<{label: string}>) {
-            return `Time: ${tooltipItems[0].label}`;
-          },
-          label: function(context: {raw: number}) {
-            return `Requests: ${context.raw}`;
-          }
-        }
-      }
     },
     animation: {
       duration: 0, // Disable animation for better performance
     },
   };
   
-  // Bar chart options
+  // Bar chart options (simplified)
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
