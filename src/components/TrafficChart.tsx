@@ -172,10 +172,10 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       },
       tooltip: {
         callbacks: {
-          title: function(tooltipItems) {
+          title: function(tooltipItems: Array<{label: string}>) {
             return `Time: ${tooltipItems[0].label}`;
           },
-          label: function(context) {
+          label: function(context: {raw: number}) {
             return `Requests: ${context.raw}`;
           }
         }
