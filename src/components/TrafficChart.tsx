@@ -64,43 +64,54 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     return uniqueLogs;
   }, [data]);
 
-  // Fixed time slots generation for the x-axis (one per 10 seconds)
-  const timeSlots = useMemo(() => {
-    // Generate fixed number of slots (e.g., 30 slots for 5 minutes)
-    const numberOfSlots = timeWindow * 6; // 6 slots per minute (1 per 10 seconds)
-    return Array.from({ length: numberOfSlots });
-  }, [timeWindow]);
-
-  // Generate chart data
+  // Generate chart data with fixed time interval x-axis
   const chartData = useMemo(() => {
+    // Number of time slots (buckets) - 6 per minute (10-second intervals)
+    const numSlots = timeWindow * 6;
+    
     // Calculate time window boundaries
-    const endTime = currentTime.getTime();
-    const startTime = endTime - (timeWindow * 60 * 1000);
+    const endTime = new Date(currentTime);
+    const startTime = new Date(endTime);
+    startTime.setMinutes(startTime.getMinutes() - timeWindow);
     
-    // Filter data to only include items within the time window
-    const recentLogs = processedData.filter(log => {
-      const logTime = new Date(log.timestamp).getTime();
-      return logTime >= startTime && logTime <= endTime;
-    });
-    
-    // Create time buckets (every 10 seconds)
-    const buckets: number[] = Array(timeSlots.length).fill(0);
+    // Create consistent time buckets every 10 seconds
+    const buckets: number[] = Array(numSlots).fill(0);
     const bucketLabels: string[] = [];
+    const bucketTimestamps: Date[] = [];
     
-    // Generate bucket labels and initialize buckets
-    for (let i = 0; i < timeSlots.length; i++) {
-      const bucketTime = new Date(endTime - ((timeSlots.length - 1 - i) * 10 * 1000));
-      bucketLabels.push(bucketTime.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' }));
+    // Calculate bucket timestamps
+    for (let i = 0; i < numSlots; i++) {
+      const slotTime = new Date(startTime);
+      slotTime.setSeconds(slotTime.getSeconds() + (i * 10));
+      bucketTimestamps.push(slotTime);
+      
+      // Format nicely as "HH:MM:SS"
+      const hours = slotTime.getHours().toString().padStart(2, '0');
+      const minutes = slotTime.getMinutes().toString().padStart(2, '0');
+      const seconds = slotTime.getSeconds().toString().padStart(2, '0');
+      
+      // Only show minutes and seconds for readability
+      bucketLabels.push(`${minutes}:${seconds}`);
     }
     
-    // Place logs into appropriate buckets
-    recentLogs.forEach(log => {
-      const logTime = new Date(log.timestamp).getTime();
-      const bucketIndex = Math.floor((logTime - startTime) / 10000);
+    // Place data points in the appropriate buckets
+    processedData.forEach(log => {
+      const logTime = new Date(log.timestamp);
       
-      // Ensure the bucket index is valid
-      if (bucketIndex >= 0 && bucketIndex < buckets.length) {
-        buckets[bucketIndex]++;
+      // Skip if outside our time window
+      if (logTime < startTime || logTime > endTime) return;
+      
+      // Find which bucket this timestamp belongs to
+      for (let i = 0; i < numSlots - 1; i++) {
+        if (logTime >= bucketTimestamps[i] && logTime < bucketTimestamps[i + 1]) {
+          buckets[i]++;
+          break;
+        }
+      }
+      
+      // Handle the last bucket separately
+      if (logTime >= bucketTimestamps[numSlots - 1] && logTime <= endTime) {
+        buckets[numSlots - 1]++;
       }
     });
     
@@ -115,7 +126,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         tension: 0.4,
       }]
     };
-  }, [currentTime, processedData, timeSlots, timeWindow]);
+  }, [currentTime, processedData, timeWindow]);
 
   // Prepare response code data
   const responseCodeData = useMemo(() => {
@@ -194,6 +205,11 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         ticks: {
           maxRotation: 45,
           minRotation: 45,
+          // Display fewer labels for readability
+          callback: function(val, index) {
+            // Show every 3rd label (30 second intervals)
+            return index % 3 === 0 ? this.getLabelForValue(val) : '';
+          }
         }
       },
       y: {
@@ -216,6 +232,15 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       legend: {
         display: true,
       },
+      // Custom tooltip
+      tooltip: {
+        callbacks: {
+          title: function(context) {
+            // The x value (time)
+            return `Time: ${context[0].label}`;
+          }
+        }
+      }
     },
     animation: {
       duration: 0, // Disable animation for better performance
