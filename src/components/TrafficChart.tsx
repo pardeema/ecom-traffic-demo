@@ -1,5 +1,5 @@
 // src/components/TrafficChart.tsx
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -36,9 +36,6 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   
-  // Store a reference to the processed data to prevent double-counting
-  const processedDataRef = useRef<Set<string>>(new Set());
-  
   // Update current time every second
   useEffect(() => {
     const interval = setInterval(() => {
@@ -47,9 +44,8 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     return () => clearInterval(interval);
   }, []);
 
-  // Process data to prevent double-counting
+  // Process data to prevent double-counting and ensure we have unique logs
   const processedData = useMemo(() => {
-    // Get unique logs based on timestamp+endpoint combination
     const uniqueLogs: TrafficLog[] = [];
     const seenKeys = new Set<string>();
     
@@ -64,42 +60,42 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     return uniqueLogs;
   }, [data]);
 
-  // Generate chart data with fixed time interval x-axis
+  // Generate chart data
   const chartData = useMemo(() => {
-    // Number of time slots (buckets) - 6 per minute (10-second intervals)
-    const numSlots = timeWindow * 6;
-    
     // Calculate time window boundaries
     const endTime = new Date(currentTime);
     const startTime = new Date(endTime);
     startTime.setMinutes(startTime.getMinutes() - timeWindow);
     
-    // Create consistent time buckets every 10 seconds
+    // Number of time slots (buckets) - 6 per minute (10-second intervals)
+    const numSlots = timeWindow * 6;
+    
+    // Create time buckets every 10 seconds
     const buckets: number[] = Array(numSlots).fill(0);
     const bucketLabels: string[] = [];
     const bucketTimestamps: Date[] = [];
     
-    // Calculate bucket timestamps
+    // Calculate bucket timestamps and labels
     for (let i = 0; i < numSlots; i++) {
       const slotTime = new Date(startTime);
       slotTime.setSeconds(slotTime.getSeconds() + (i * 10));
       bucketTimestamps.push(slotTime);
       
-      // Format nicely as "HH:MM:SS"
-      const hours = slotTime.getHours().toString().padStart(2, '0');
+      // Format as "MM:SS"
       const minutes = slotTime.getMinutes().toString().padStart(2, '0');
       const seconds = slotTime.getSeconds().toString().padStart(2, '0');
-      
-      // Only show minutes and seconds for readability
       bucketLabels.push(`${minutes}:${seconds}`);
     }
     
-    // Place data points in the appropriate buckets
-    processedData.forEach(log => {
+    // Filter data to only include items within the time window
+    const recentLogs = processedData.filter(log => {
       const logTime = new Date(log.timestamp);
-      
-      // Skip if outside our time window
-      if (logTime < startTime || logTime > endTime) return;
+      return logTime >= startTime && logTime <= endTime;
+    });
+    
+    // Place logs into appropriate buckets
+    recentLogs.forEach(log => {
+      const logTime = new Date(log.timestamp);
       
       // Find which bucket this timestamp belongs to
       for (let i = 0; i < numSlots - 1; i++) {
@@ -171,7 +167,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     };
   }, [currentTime, processedData, timeWindow]);
   
-  // Calculate total requests and last 10 seconds count
+  // Calculate totals
   const totalRequests = useMemo(() => {
     // Count total requests within the time window
     const endTime = currentTime.getTime();
@@ -192,78 +188,6 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     }).length;
   }, [currentTime, processedData]);
   
-  // Chart options
-  const lineChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      x: {
-        title: {
-          display: true,
-          text: 'Time',
-        },
-        ticks: {
-          maxRotation: 45,
-          minRotation: 45,
-          // Display fewer labels for readability
-          callback: function(val: number, index: number) {
-            // Show every 3rd label (30 second intervals)
-            return index % 3 === 0 ? chartData.labels[val] : '';
-          }
-        }
-      },
-      y: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Request Count',
-        },
-        suggestedMin: 0,
-      },
-    },
-    plugins: {
-      title: {
-        display: true,
-        text: `Traffic to ${endpoint}`,
-        font: {
-          size: 16,
-        },
-      },
-      legend: {
-        display: true,
-      },
-      // Custom tooltip
-      tooltip: {
-        callbacks: {
-          title: function(context: Array<{label: string}>) {
-            // The x value (time)
-            return `Time: ${context[0].label}`;
-          }
-        }
-      }
-    },
-    animation: {
-      duration: 0, // Disable animation for better performance
-    },
-  };
-  
-  const barChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      title: {
-        display: true,
-        text: 'Response Codes',
-        font: {
-          size: 16,
-        },
-      },
-      legend: {
-        display: false,
-      },
-    },
-  };
-  
   return (
     <div className="traffic-chart">
       <div className="chart-controls">
@@ -283,9 +207,26 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       
       <div className="chart-container">
         {chartType === 'line' ? (
-          <Line data={chartData} options={lineChartOptions} height={300} />
+          <Line 
+            data={chartData} 
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: {
+                duration: 0
+              }
+            }} 
+            height={300} 
+          />
         ) : (
-          <Bar data={responseCodeData} options={barChartOptions} height={300} />
+          <Bar 
+            data={responseCodeData} 
+            options={{
+              responsive: true,
+              maintainAspectRatio: false
+            }} 
+            height={300} 
+          />
         )}
       </div>
       
