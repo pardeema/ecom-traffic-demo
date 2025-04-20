@@ -1,5 +1,5 @@
 // src/components/TrafficChart.tsx
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -36,11 +36,21 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   
-  // Update current time every second
+  // Use refs to store the last update time and chart update interval
+  const lastUpdateRef = useRef<number>(Date.now());
+  const updateIntervalRef = useRef<number>(10000); // 10 seconds between full chart updates
+  
+  // Update current time on a fixed interval
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+      const now = Date.now();
+      // Only update the chart time if enough time has passed
+      if (now - lastUpdateRef.current >= updateIntervalRef.current) {
+        setCurrentTime(new Date());
+        lastUpdateRef.current = now;
+      }
+    }, 1000); // Check every second, but only update when needed
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -60,17 +70,18 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     return uniqueLogs;
   }, [data]);
 
-  // Generate chart data
+  // Generate chart data with fixed intervals
   const chartData = useMemo(() => {
     // Calculate time window boundaries
     const endTime = new Date(currentTime);
     const startTime = new Date(endTime);
     startTime.setMinutes(startTime.getMinutes() - timeWindow);
     
-    // Number of time slots (buckets) - 6 per minute (10-second intervals)
-    const numSlots = timeWindow * 6;
+    // Use a fixed number of buckets (30 seconds each)
+    const bucketInterval = 30; // 30 seconds per bucket
+    const numSlots = Math.ceil((timeWindow * 60) / bucketInterval);
     
-    // Create time buckets every 10 seconds
+    // Create time buckets
     const buckets: number[] = Array(numSlots).fill(0);
     const bucketLabels: string[] = [];
     const bucketTimestamps: Date[] = [];
@@ -78,21 +89,15 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     // Calculate bucket timestamps and labels
     for (let i = 0; i < numSlots; i++) {
       const slotTime = new Date(startTime);
-      slotTime.setSeconds(slotTime.getSeconds() + (i * 10));
+      slotTime.setSeconds(slotTime.getSeconds() + (i * bucketInterval));
       bucketTimestamps.push(slotTime);
       
-      // Format time as HH:MM:SS or MM:SS depending on the time range
-      let timeLabel;
-      if (timeWindow > 60) { // If more than 1 hour window
-        timeLabel = slotTime.toTimeString().substring(0, 8); // HH:MM:SS
-      } else {
-        // Just show MM:SS for shorter time windows
-        const minutes = slotTime.getMinutes().toString().padStart(2, '0');
-        const seconds = slotTime.getSeconds().toString().padStart(2, '0');
-        timeLabel = `${minutes}:${seconds}`;
-      }
+      // Format as HH:MM or MM:SS
+      const hours = slotTime.getHours().toString().padStart(2, '0');
+      const minutes = slotTime.getMinutes().toString().padStart(2, '0');
       
-      bucketLabels.push(timeLabel);
+      // Just show hours and minutes for better readability
+      bucketLabels.push(`${hours}:${minutes}`);
     }
     
     // Filter data to only include items within the time window
@@ -175,26 +180,27 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     };
   }, [currentTime, processedData, timeWindow]);
   
-  // Calculate totals
+  // Calculate totals - these should still update every second for accuracy
   const totalRequests = useMemo(() => {
     // Count total requests within the time window
-    const endTime = currentTime.getTime();
+    const endTime = new Date().getTime(); // Use actual current time
     const startTime = endTime - (timeWindow * 60 * 1000);
     
     return processedData.filter(log => {
       const logTime = new Date(log.timestamp).getTime();
       return logTime >= startTime && logTime <= endTime;
     }).length;
-  }, [currentTime, processedData, timeWindow]);
+  }, [processedData, timeWindow]);
   
   const last10SecondsCount = useMemo(() => {
-    const tenSecondsAgo = currentTime.getTime() - 10000;
+    const endTime = new Date().getTime(); // Use actual current time
+    const tenSecondsAgo = endTime - 10000;
     
     return processedData.filter(log => {
       const logTime = new Date(log.timestamp).getTime();
       return logTime >= tenSecondsAgo;
     }).length;
-  }, [currentTime, processedData]);
+  }, [processedData]);
   
   // Line chart options
   const lineChartOptions = {
@@ -202,18 +208,16 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     maintainAspectRatio: false,
     scales: {
       y: {
-        // Ensure y-axis starts at 0 and never goes negative
         beginAtZero: true,
         min: 0,
-        // Set a reasonable suggestedMax with some padding
-        suggestedMax: 2,
-        // Alternative approach:
-        // ticks: {
-        //   stepSize: 1
-        // }
+        suggestedMax: 2
       }
     },
     plugins: {
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+      },
       legend: {
         display: true,
       },
