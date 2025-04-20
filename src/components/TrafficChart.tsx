@@ -35,8 +35,10 @@ interface TrafficChartProps {
 const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow }) => {
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [chartData, setChartData] = useState<any>(null);
+  const [responseCodeData, setResponseCodeData] = useState<any>(null);
   
-  // Force update current time every second to make the chart "move"
+  // Force redraw the chart every second to ensure smooth sliding window effect
   useEffect(() => {
     const timeUpdateInterval = setInterval(() => {
       setCurrentTime(new Date());
@@ -45,21 +47,37 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     return () => clearInterval(timeUpdateInterval);
   }, []);
   
+  // Recalculate chart data when currentTime or data changes
+  useEffect(() => {
+    setChartData(prepareTimeSeriesData());
+    setResponseCodeData(prepareResponseCodeData());
+  }, [currentTime, data, timeWindow]);
+  
   // Prepare time series data
   const prepareTimeSeriesData = () => {
-    // Create time buckets (every 10 seconds within the time window)
-    // Use currentTime instead of creating a new Date every render
+    // Calculate the window start and end times based on currentTime
+    const windowEnd = new Date(currentTime);
+    const windowStart = new Date(currentTime);
+    windowStart.setMinutes(windowStart.getMinutes() - timeWindow);
+    
+    // Create fixed time buckets (every 10 seconds within the time window)
+    const bucketCount = timeWindow * 6; // 6 buckets per minute (10-second intervals)
     const timeBuckets: Date[] = [];
-    for (let i = timeWindow * 6; i >= 0; i--) {
-      const bucketTime = new Date(currentTime);
-      bucketTime.setSeconds(bucketTime.getSeconds() - i * 10);
+    
+    // Create evenly spaced buckets from windowStart to windowEnd
+    for (let i = 0; i <= bucketCount; i++) {
+      const bucketTime = new Date(windowStart.getTime());
+      bucketTime.setSeconds(
+        bucketTime.getSeconds() + Math.floor(i * (windowEnd.getTime() - windowStart.getTime()) / (bucketCount * 1000)) * 10
+      );
       timeBuckets.push(bucketTime);
     }
     
     // Count requests in each bucket
-    const requestCounts = timeBuckets.map(bucketTime => {
-      const bucketEnd = new Date(bucketTime);
-      bucketEnd.setSeconds(bucketEnd.getSeconds() + 10);
+    const requestCounts = timeBuckets.map((bucketTime, index) => {
+      const bucketEnd = index < bucketCount 
+        ? timeBuckets[index + 1] 
+        : new Date(bucketTime.getTime() + 10000); // Last bucket is 10 seconds wide
       
       return data.filter(item => {
         const itemTime = new Date(item.timestamp);
@@ -120,8 +138,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     };
   };
   
-  const timeSeriesData = prepareTimeSeriesData();
-  const responseCodeData = prepareResponseCodeData();
+  // Use the memoized data from state instead of recalculating on every render
   
   // Chart options
   const lineChartOptions = {
@@ -208,10 +225,12 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       </div>
       
       <div className="chart-container">
-        {chartType === 'line' ? (
-          <Line data={timeSeriesData} options={lineChartOptions} height={300} />
-        ) : (
+        {chartType === 'line' && chartData ? (
+          <Line data={chartData} options={lineChartOptions} height={300} />
+        ) : chartType === 'bar' && responseCodeData ? (
           <Bar data={responseCodeData} options={barChartOptions} height={300} />
+        ) : (
+          <div className="loading-chart">Loading chart data...</div>
         )}
       </div>
       
@@ -261,6 +280,15 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         .chart-container {
           height: 300px;
           margin-bottom: 15px;
+        }
+        
+        .loading-chart {
+          height: 300px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #f9f9f9;
+          border-radius: 4px;
         }
         
         .traffic-stats {
