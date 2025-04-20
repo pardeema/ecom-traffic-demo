@@ -206,7 +206,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
           maxRotation: 45,
           minRotation: 45,
           // Display fewer labels for readability
-          callback: function(val, index) {
+          callback: function(val: number, index: number) {
             // Show every 3rd label (30 second intervals)
             return index % 3 === 0 ? this.getLabelForValue(val) : '';
           }
@@ -235,7 +235,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       // Custom tooltip
       tooltip: {
         callbacks: {
-          title: function(context) {
+          title: function(context: Array<{label: string}>) {
             // The x value (time)
             return `Time: ${context[0].label}`;
           }
