@@ -81,10 +81,18 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       slotTime.setSeconds(slotTime.getSeconds() + (i * 10));
       bucketTimestamps.push(slotTime);
       
-      // Format as "MM:SS"
-      const minutes = slotTime.getMinutes().toString().padStart(2, '0');
-      const seconds = slotTime.getSeconds().toString().padStart(2, '0');
-      bucketLabels.push(`${minutes}:${seconds}`);
+      // Format time as HH:MM:SS or MM:SS depending on the time range
+      let timeLabel;
+      if (timeWindow > 60) { // If more than 1 hour window
+        timeLabel = slotTime.toTimeString().substring(0, 8); // HH:MM:SS
+      } else {
+        // Just show MM:SS for shorter time windows
+        const minutes = slotTime.getMinutes().toString().padStart(2, '0');
+        const seconds = slotTime.getSeconds().toString().padStart(2, '0');
+        timeLabel = `${minutes}:${seconds}`;
+      }
+      
+      bucketLabels.push(timeLabel);
     }
     
     // Filter data to only include items within the time window
@@ -188,6 +196,64 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     }).length;
   }, [currentTime, processedData]);
   
+  // Line chart options
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        // Ensure y-axis starts at 0 and never goes negative
+        beginAtZero: true,
+        min: 0,
+        // Set a reasonable suggestedMax with some padding
+        suggestedMax: 2,
+        // Alternative approach:
+        // ticks: {
+        //   stepSize: 1
+        // }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true,
+      },
+      title: {
+        display: true,
+        text: `Traffic to ${endpoint}`,
+        font: {
+          size: 16,
+        },
+      }
+    },
+    animation: {
+      duration: 0 // Disable animation for better performance
+    }
+  };
+  
+  // Bar chart options
+  const barChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true,
+        min: 0
+      }
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      title: {
+        display: true,
+        text: 'Response Codes',
+        font: {
+          size: 16,
+        },
+      }
+    }
+  };
+  
   return (
     <div className="traffic-chart">
       <div className="chart-controls">
@@ -209,22 +275,13 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         {chartType === 'line' ? (
           <Line 
             data={chartData} 
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              animation: {
-                duration: 0
-              }
-            }} 
+            options={lineChartOptions} 
             height={300} 
           />
         ) : (
           <Bar 
             data={responseCodeData} 
-            options={{
-              responsive: true,
-              maintainAspectRatio: false
-            }} 
+            options={barChartOptions} 
             height={300} 
           />
         )}
