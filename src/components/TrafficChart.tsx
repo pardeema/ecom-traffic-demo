@@ -1,5 +1,5 @@
 // src/components/TrafficChart.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,75 +27,70 @@ ChartJS.register(
 );
 
 interface TrafficChartProps {
-  data: TrafficLog[]; // Now accepting data directly
+  data: TrafficLog[];
   endpoint: string;
-  timeWindow: number;
+  timeWindow: number; // in minutes
 }
 
 const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow }) => {
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const [chartData, setChartData] = useState<any>(null);
-  const [responseCodeData, setResponseCodeData] = useState<any>(null);
-  
-  // Force redraw the chart every second to ensure smooth sliding window effect
+
+  // Update current time every second
   useEffect(() => {
-    const timeUpdateInterval = setInterval(() => {
+    const interval = setInterval(() => {
       setCurrentTime(new Date());
-    }, 1000); // Update every second
-    
-    return () => clearInterval(timeUpdateInterval);
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
-  
-  // Recalculate chart data when currentTime or data changes
-  useEffect(() => {
-    setChartData(prepareTimeSeriesData());
-    setResponseCodeData(prepareResponseCodeData());
-  }, [currentTime, data, timeWindow]);
-  
-  // Prepare time series data
-  const prepareTimeSeriesData = () => {
-    // Calculate the window start and end times based on currentTime
-    const windowEnd = new Date(currentTime);
-    const windowStart = new Date(currentTime);
-    windowStart.setMinutes(windowStart.getMinutes() - timeWindow);
-    
-    // Create fixed time buckets (every 10 seconds within the time window)
-    const bucketCount = timeWindow * 6; // 6 buckets per minute (10-second intervals)
-    const timeBuckets: Date[] = [];
-    
-    // Create evenly spaced buckets from windowStart to windowEnd
-    for (let i = 0; i <= bucketCount; i++) {
-      const bucketTime = new Date(windowStart.getTime());
-      bucketTime.setSeconds(
-        bucketTime.getSeconds() + Math.floor(i * (windowEnd.getTime() - windowStart.getTime()) / (bucketCount * 1000)) * 10
-      );
-      timeBuckets.push(bucketTime);
-    }
-    
-    // Count requests in each bucket
-    const requestCounts = timeBuckets.map((bucketTime, index) => {
-      const bucketEnd = index < bucketCount 
-        ? timeBuckets[index + 1] 
-        : new Date(bucketTime.getTime() + 10000); // Last bucket is 10 seconds wide
+
+  // Create a fixed array of time slots (one per 10 seconds)
+  const timeSlots = useMemo(() => {
+    // Number of slots (6 per minute = 1 per 10 seconds)
+    const slotCount = timeWindow * 6;
+    return Array.from({ length: slotCount }, (_, i) => i);
+  }, [timeWindow]);
+
+  // Generate labels for the chart (counting backward from now)
+  const generateLabels = useCallback(() => {
+    return timeSlots.map(slot => {
+      const slotTime = new Date(currentTime.getTime() - (slot * 10 * 1000));
+      return slotTime.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' });
+    }).reverse(); // Reverse to show oldest first (left to right)
+  }, [currentTime, timeSlots]);
+
+  // Count data points that fall into each time slot
+  const generateDataPoints = useCallback(() => {
+    // Filter out data points older than our time window
+    const cutoffTime = new Date(currentTime.getTime() - (timeWindow * 60 * 1000));
+    const recentData = data.filter(item => new Date(item.timestamp) >= cutoffTime);
+
+    // Initialize counts for all slots to 0
+    const counts = Array(timeSlots.length).fill(0);
+
+    // Count items in each slot
+    recentData.forEach(item => {
+      const itemTime = new Date(item.timestamp);
+      const secondsAgo = Math.floor((currentTime.getTime() - itemTime.getTime()) / 1000);
+      const slotIndex = Math.floor(secondsAgo / 10);
       
-      return data.filter(item => {
-        const itemTime = new Date(item.timestamp);
-        return itemTime >= bucketTime && itemTime < bucketEnd;
-      }).length;
+      // Only count if it falls within our window
+      if (slotIndex >= 0 && slotIndex < timeSlots.length) {
+        counts[slotIndex]++;
+      }
     });
-    
-    // Format labels (show only minute:second)
-    const labels = timeBuckets.map(time => 
-      time.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })
-    );
-    
+
+    return counts.reverse(); // Reverse to match the order of labels
+  }, [currentTime, data, timeSlots, timeWindow]);
+
+  // Prepare time series chart data
+  const timeSeriesData = useMemo(() => {
     return {
-      labels,
+      labels: generateLabels(),
       datasets: [
         {
           label: 'Requests',
-          data: requestCounts,
+          data: generateDataPoints(),
           fill: true,
           backgroundColor: 'rgba(75, 192, 192, 0.2)',
           borderColor: 'rgba(75, 192, 192, 1)',
@@ -103,12 +98,13 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         },
       ],
     };
-  };
-  
+  }, [generateLabels, generateDataPoints]);
+
   // Prepare response code data
-  const prepareResponseCodeData = () => {
+  const responseCodeData = useMemo(() => {
     const responseCodes: { [key: string]: number } = {};
     
+    // Count occurrences of each status code
     data.forEach(item => {
       const code = item.statusCode?.toString() || 'unknown';
       responseCodes[code] = (responseCodes[code] || 0) + 1;
@@ -136,11 +132,9 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         },
       ],
     };
-  };
+  }, [data]);
   
-  // Use the memoized data from state instead of recalculating on every render
-  
-  // Chart options
+  // Line chart options
   const lineChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -150,6 +144,10 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
           display: true,
           text: 'Time',
         },
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45,
+        }
       },
       y: {
         beginAtZero: true,
@@ -157,7 +155,6 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
           display: true,
           text: 'Request Count',
         },
-        // Set a minimum of 5 for the y-axis to avoid empty-looking charts
         suggestedMin: 0,
         suggestedMax: 5
       },
@@ -175,11 +172,10 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       },
       tooltip: {
         callbacks: {
-          title: function(tooltipItems: any) {
-            // Enhanced tooltip title with date info
+          title: function(tooltipItems) {
             return `Time: ${tooltipItems[0].label}`;
           },
-          label: function(context: any) {
+          label: function(context) {
             return `Requests: ${context.raw}`;
           }
         }
@@ -190,6 +186,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     },
   };
   
+  // Bar chart options
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -206,6 +203,12 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       },
     },
   };
+
+  // Calculate "Last 10 seconds" count
+  const last10SecondsCount = useMemo(() => {
+    const tenSecondsAgo = new Date(currentTime.getTime() - 10000);
+    return data.filter(item => new Date(item.timestamp) >= tenSecondsAgo).length;
+  }, [currentTime, data]);
   
   return (
     <div className="traffic-chart">
@@ -225,12 +228,10 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
       </div>
       
       <div className="chart-container">
-        {chartType === 'line' && chartData ? (
-          <Line data={chartData} options={lineChartOptions} height={300} />
-        ) : chartType === 'bar' && responseCodeData ? (
-          <Bar data={responseCodeData} options={barChartOptions} height={300} />
+        {chartType === 'line' ? (
+          <Line data={timeSeriesData} options={lineChartOptions} height={300} />
         ) : (
-          <div className="loading-chart">Loading chart data...</div>
+          <Bar data={responseCodeData} options={barChartOptions} height={300} />
         )}
       </div>
       
@@ -241,14 +242,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         </div>
         <div className="stat-item">
           <span className="stat-label">Last 10 seconds:</span>
-          <span className="stat-value">
-            {data.filter(item => {
-              const itemTime = new Date(item.timestamp);
-              const tenSecondsAgo = new Date(currentTime);
-              tenSecondsAgo.setSeconds(tenSecondsAgo.getSeconds() - 10);
-              return itemTime >= tenSecondsAgo;
-            }).length}
-          </span>
+          <span className="stat-value">{last10SecondsCount}</span>
         </div>
       </div>
       
@@ -280,15 +274,6 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         .chart-container {
           height: 300px;
           margin-bottom: 15px;
-        }
-        
-        .loading-chart {
-          height: 300px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #f9f9f9;
-          border-radius: 4px;
         }
         
         .traffic-stats {
