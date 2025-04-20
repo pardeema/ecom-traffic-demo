@@ -202,62 +202,6 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
     }).length;
   }, [processedData]);
   
-  // Line chart options
-  const lineChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        min: 0,
-        suggestedMax: 2
-      }
-    },
-    plugins: {
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-      },
-      legend: {
-        display: true,
-      },
-      title: {
-        display: true,
-        text: `Traffic to ${endpoint}`,
-        font: {
-          size: 16,
-        },
-      }
-    },
-    animation: {
-      duration: 0 // Disable animation for better performance
-    }
-  };
-  
-  // Bar chart options
-  const barChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        min: 0
-      }
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      title: {
-        display: true,
-        text: 'Response Codes',
-        font: {
-          size: 16,
-        },
-      }
-    }
-  };
-  
   return (
     <div className="traffic-chart">
       <div className="chart-controls">
@@ -279,13 +223,35 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
         {chartType === 'line' ? (
           <Line 
             data={chartData} 
-            options={lineChartOptions} 
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  min: 0,
+                  suggestedMax: 2
+                }
+              },
+              animation: {
+                duration: 0
+              }
+            }} 
             height={300} 
           />
         ) : (
           <Bar 
             data={responseCodeData} 
-            options={barChartOptions} 
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  min: 0
+                }
+              }
+            }} 
             height={300} 
           />
         )}
