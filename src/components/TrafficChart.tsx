@@ -208,7 +208,7 @@ const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow 
           // Display fewer labels for readability
           callback: function(val: number, index: number) {
             // Show every 3rd label (30 second intervals)
-            return index % 3 === 0 ? this.getLabelForValue(val) : '';
+            return index % 3 === 0 ? chartData.labels[val] : '';
           }
         }
       },
