@@ -1,62 +1,56 @@
 // src/app/api/traffic/incremental/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getTrafficLogs } from '@/utils/traffic-logger'; // Import the updated function
+import { getTrafficLogs } from '@/utils/traffic-logger';
 import { TrafficLog } from '@/types';
 
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-
-    // Get the 'since' parameter (timestamp string)
     const lastTimestampStr = url.searchParams.get('since');
-    let lastTimestampMs: number | undefined = undefined; // Initialize
+    let lastTimestampMs: number | undefined = undefined;
 
-    // Parse and validate the timestamp only if the parameter exists
+    // Parse and validate timestamp
     if (lastTimestampStr) {
-        // Attempt parsing
-        lastTimestampMs = parseInt(lastTimestampStr, 10);
-        // Validate the *result* of parsing. isNaN checks if the parsing failed.
-        if (isNaN(lastTimestampMs)) {
-            // Handle invalid number format if 'since' was provided but wasn't a valid number
-            return NextResponse.json({ message: 'Invalid since timestamp format' }, { status: 400 });
-        }
+      lastTimestampMs = parseInt(lastTimestampStr, 10);
+      if (isNaN(lastTimestampMs)) {
+        return NextResponse.json({ message: 'Invalid since timestamp format' }, { status: 400 });
+      }
     }
-    // Now, lastTimestampMs is either a valid number or undefined (if 'since' wasn't provided)
 
-    // Define a limit for safety, e.g., max 100 logs per incremental fetch
-    const limit = 100;
+    // Default to 30 logs per incremental fetch (reduced from 100)
+    const limit = 30;
 
-    // Fetch only logs newer than the lastTimestampMs using the optimized function
-    // Pass lastTimestampMs (which can be undefined for the initial fetch)
+    // Fetch only logs newer than the lastTimestampMs
     const newLogs: TrafficLog[] = await getTrafficLogs({
-      since: lastTimestampMs, // Pass the timestamp in milliseconds (or undefined)
+      since: lastTimestampMs,
       limit: limit,
-      // Add other filters if needed (e.g., endpoint, method) based on query params
-      // endpoint: url.searchParams.get('endpoint') || undefined,
-      // method: url.searchParams.get('method') || undefined,
     });
 
-    // Determine the timestamp of the newest log fetched (if any)
-    let latestLogTimestampMs: number | null = null;
+    // Determine the timestamp of the newest log for next polling
+    let latestLogTimestampMs: number = lastTimestampMs || Date.now();
     if (newLogs.length > 0) {
-      // Logs should be sorted newest first by getTrafficLogs
-      latestLogTimestampMs = new Date(newLogs[0].timestamp).getTime();
+      latestLogTimestampMs = Math.max(
+        latestLogTimestampMs,
+        new Date(newLogs[0].timestamp).getTime()
+      );
     }
 
-    // Determine the timestamp to send back to the client for the next 'since' query.
-    // If new logs were found, use the latest timestamp from those logs.
-    // If no new logs were found, reuse the timestamp the client sent (if any).
-    // If it was the initial fetch (no 'since'), use the current time.
-    const nextSinceTimestamp = latestLogTimestampMs ?? lastTimestampMs ?? Date.now();
+    // Add a small buffer to the timestamp to avoid getting the same logs again
+    const nextSinceTimestamp = latestLogTimestampMs + 1;
 
+    // Split logs by endpoint for easier processing on client
+    const loginLogs = newLogs.filter(log => log.endpoint === '/api/auth/login');
+    const checkoutLogs = newLogs.filter(log => log.endpoint === '/api/checkout');
 
     const response = NextResponse.json({
-      logs: newLogs, // Send only the newly fetched logs
-      // Send the timestamp (in ms) that the client should use for the *next* 'since' query param.
-      latestTimestamp: nextSinceTimestamp
+      login: loginLogs,
+      checkout: checkoutLogs,
+      all: newLogs,
+      latestTimestamp: nextSinceTimestamp,
+      serverTime: Date.now() // Send server time for sync
     });
 
-    // Prevent caching of incremental updates
+    // Prevent caching
     response.headers.set('Cache-Control', 'no-store');
 
     return response;
