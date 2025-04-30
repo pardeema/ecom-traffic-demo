@@ -76,7 +76,7 @@ function getClientIp(req: NextRequest): string {
 
 /**
  * Optimized method to get traffic logs
- * - Uses single Redis operations
+ * - Uses Redis commands compatible with Upstash client
  * - Retrieves minimal data for specified time window
  */
 export async function getTrafficLogs(options: {
@@ -90,11 +90,16 @@ export async function getTrafficLogs(options: {
     const { endpoint, method, isBot, since = 0, limit = 100 } = options;
     
     // Get log IDs in time range (newest first)
-    const logIds = await redis.zrevrangebyscore(
+    // Using zrange with the correct options for Upstash Redis client
+    const logIds = await redis.zrange(
       LOGS_LIST_KEY,
+      since > 0 ? since.toString() : '-inf',
       '+inf',
-      since > 0 ? since : '-inf',
-      { limit: { offset: 0, count: limit * 2 } } // Fetch extra to account for filtering
+      {
+        byScore: true,
+        rev: true,
+        count: limit * 2 // Fetch extra to account for filtering
+      }
     );
     
     if (!logIds || logIds.length === 0) {
@@ -154,7 +159,7 @@ export async function getTrafficLogs(options: {
 export async function getLatestLogTimestamp(): Promise<number> {
   try {
     // Get the newest log ID
-    const [newestId] = await redis.zrevrange(LOGS_LIST_KEY, 0, 0);
+    const [newestId] = await redis.zrange(LOGS_LIST_KEY, -1, -1);
     
     if (!newestId) {
       return Date.now(); // Default to current time if no logs exist
