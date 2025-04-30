@@ -89,25 +89,16 @@ export async function getTrafficLogs(options: {
   try {
     const { endpoint, method, isBot, since = 0, limit = 100 } = options;
     
-    // Get log IDs in time range (newest first)
-    // Using zrange with the correct options for Upstash Redis client
-    const logIds = await redis.zrange(
-      LOGS_LIST_KEY,
-      since > 0 ? since.toString() : '-inf',
-      '+inf',
-      {
-        byScore: true,
-        rev: true,
-        count: limit * 2 // Fetch extra to account for filtering
-      }
-    );
+    // Use a simpler approach compatible with Upstash Redis
+    // First get the complete set of log IDs sorted by time
+    const logIds = await redis.zrange(LOGS_LIST_KEY, 0, -1, { rev: true });
     
     if (!logIds || logIds.length === 0) {
       return [];
     }
     
     // Fetch log data in a single mget operation
-    const logData = await redis.mget(...logIds);
+    const logData = await redis.mget(...logIds.slice(0, limit * 2));
     
     // Parse and filter logs
     const logs: TrafficLog[] = [];
@@ -116,6 +107,12 @@ export async function getTrafficLogs(options: {
       if (logData[i]) {
         try {
           const log = JSON.parse(logData[i] as string) as TrafficLog;
+          const logTimestamp = new Date(log.timestamp).getTime();
+          
+          // Skip logs older than 'since'
+          if (since > 0 && logTimestamp <= since) {
+            continue;
+          }
           
           // Apply filters
           let include = true;
@@ -158,8 +155,9 @@ export async function getTrafficLogs(options: {
  */
 export async function getLatestLogTimestamp(): Promise<number> {
   try {
-    // Get the newest log ID
-    const [newestId] = await redis.zrange(LOGS_LIST_KEY, -1, -1);
+    // Get the newest log ID using zrange with rev option
+    const newestIds = await redis.zrange(LOGS_LIST_KEY, 0, 0, { rev: true });
+    const newestId = newestIds[0];
     
     if (!newestId) {
       return Date.now(); // Default to current time if no logs exist
