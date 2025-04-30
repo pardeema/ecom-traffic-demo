@@ -6,7 +6,7 @@ import { TrafficLog } from '@/types';
 // --- Redis Constants ---
 const LOG_PREFIX = 'traffic:log:';
 const LOGS_LIST_KEY = 'traffic:logs';
-const MAX_LOGS = 200; // Reduced from 1000 to save Redis space
+const MAX_LOGS = 200;
 
 /**
  * Log traffic data to Redis with optimized storage
@@ -20,7 +20,7 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
     // Get client IP
     const clientIp = getClientIp(req);
     
-    // Create minimal log entry with only essential data
+    // Create minimal log entry
     const logEntry: TrafficLog = {
       timestamp,
       endpoint,
@@ -30,22 +30,20 @@ export async function logTraffic(req: NextRequest, endpoint: string, status: num
       userAgent: req.headers.get('user-agent') || 'unknown',
       isBot: req.headers.get('x-kasada-classification') === 'bad-bot',
       statusCode: status,
-      // Minimize stored headers to save space
       headers: {
         'user-agent': req.headers.get('user-agent') || '',
         'referer': req.headers.get('referer') || '',
       }
     };
     
-    // Single set operation for the log entry
-    await redis.set(logId, JSON.stringify(logEntry), { ex: 3600 }); // 1 hour expiry
+    // Store log data
+    await redis.set(logId, JSON.stringify(logEntry), { ex: 3600 });
     
-    // Add to sorted set for time ordering
+    // Add to sorted set
     await redis.zadd(LOGS_LIST_KEY, { score: timestampMs, member: logId });
     
-    // Trim old logs occasionally (not every request to save operations)
-    // We'll do this probabilistically to reduce the number of operations
-    if (Math.random() < 0.1) { // 10% chance to trim on each request
+    // Occasionally trim old logs (10% of requests)
+    if (Math.random() < 0.1) {
       await redis.zremrangebyrank(LOGS_LIST_KEY, 0, -(MAX_LOGS + 1));
     }
     
@@ -75,9 +73,7 @@ function getClientIp(req: NextRequest): string {
 }
 
 /**
- * Optimized method to get traffic logs
- * - Uses Redis commands compatible with Upstash client
- * - Retrieves minimal data for specified time window
+ * Get traffic logs with optimized fetching
  */
 export async function getTrafficLogs(options: {
   endpoint?: string;
@@ -89,24 +85,25 @@ export async function getTrafficLogs(options: {
   try {
     const { endpoint, method, isBot, since = 0, limit = 100 } = options;
     
-    // Use a simpler approach compatible with Upstash Redis
-    // First get the complete set of log IDs sorted by time
-    const logIds = await redis.zrange(LOGS_LIST_KEY, 0, -1, { rev: true });
+    // Get recent log IDs (newest first)
+    const logIds = await redis.zrange(LOGS_LIST_KEY, 0, limit * 2, { rev: true }) as string[];
     
     if (!logIds || logIds.length === 0) {
       return [];
     }
     
-    // Fetch log data in a single mget operation
-    const logData = await redis.mget(...logIds.slice(0, limit * 2));
-    
-    // Parse and filter logs
+    // Fetch logs one by one to avoid mget type issues
+    // This is not as efficient but will work with the Upstash client
     const logs: TrafficLog[] = [];
+    const fetchLimit = Math.min(logIds.length, limit * 2);
     
-    for (let i = 0; i < logData.length; i++) {
-      if (logData[i]) {
+    for (let i = 0; i < fetchLimit; i++) {
+      const logId = logIds[i];
+      const logData = await redis.get(logId);
+      
+      if (logData) {
         try {
-          const log = JSON.parse(logData[i] as string) as TrafficLog;
+          const log = JSON.parse(logData as string) as TrafficLog;
           const logTimestamp = new Date(log.timestamp).getTime();
           
           // Skip logs older than 'since'
@@ -132,8 +129,9 @@ export async function getTrafficLogs(options: {
           if (include) {
             logs.push(log);
             
+            // Stop once we have enough logs
             if (logs.length >= limit) {
-              break; // Stop once we have enough logs
+              break;
             }
           }
         } catch (e) {
@@ -150,23 +148,27 @@ export async function getTrafficLogs(options: {
 }
 
 /**
- * Get the latest timestamp from the log set
- * This helps optimize polling by only fetching newer logs
+ * Get the latest log timestamp
  */
 export async function getLatestLogTimestamp(): Promise<number> {
   try {
-    // Get the newest log ID using zrange with rev option
-    const newestIds = await redis.zrange(LOGS_LIST_KEY, 0, 0, { rev: true });
+    const newestIds = await redis.zrange(LOGS_LIST_KEY, -1, -1) as string[];
     const newestId = newestIds[0];
     
     if (!newestId) {
-      return Date.now(); // Default to current time if no logs exist
+      return Date.now();
     }
     
     // Extract timestamp from log ID
-    const timestamp = newestId.split('-')[1];
-    return parseInt(timestamp) || Date.now();
+    const parts = newestId.split('-');
+    if (parts.length >= 2) {
+      const timestamp = parseInt(parts[1]);
+      if (!isNaN(timestamp)) {
+        return timestamp;
+      }
+    }
     
+    return Date.now();
   } catch (error) {
     console.error('Error getting latest log timestamp:', error);
     return Date.now();
