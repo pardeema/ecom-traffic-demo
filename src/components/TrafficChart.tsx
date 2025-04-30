@@ -1,323 +1,156 @@
 // src/components/TrafficChart.tsx
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
+  BarElement, // Keep BarElement if needed later, but not used currently
   Title,
   Tooltip,
   Legend,
+  TimeScale, // Import TimeScale
+  TimeSeriesScale // Import TimeSeriesScale
 } from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
-import { TrafficLog } from '@/types';
+import { Line } from 'react-chartjs-2';
+import 'chartjs-adapter-date-fns'; // Import date adapter
 
-// Register Chart.js components
+// Register Chart.js components including time scales
 ChartJS.register(
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
+  // BarElement, // Not used for time series
   Title,
   Tooltip,
-  Legend
+  Legend,
+  TimeScale,        // Register TimeScale
+  TimeSeriesScale   // Register TimeSeriesScale
 );
 
-interface TrafficChartProps {
-  data: TrafficLog[];
-  endpoint: string;
-  timeWindow: number; // in minutes
+// New interface for aggregated data points passed as props
+interface AggregatedDataPoint {
+    timestamp: number; // Unix timestamp (seconds)
+    count: number;
 }
 
-const TrafficChart: React.FC<TrafficChartProps> = ({ data, endpoint, timeWindow }) => {
-  const [chartType, setChartType] = useState<'line' | 'bar'>('line');
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  
-  // Use refs to store the last update time and chart update interval
-  const lastUpdateRef = useRef<number>(Date.now());
-  const updateIntervalRef = useRef<number>(10000); // 10 seconds between full chart updates
-  
-  // Update current time on a fixed interval
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      // Only update the chart time if enough time has passed
-      if (now - lastUpdateRef.current >= updateIntervalRef.current) {
-        setCurrentTime(new Date());
-        lastUpdateRef.current = now;
-      }
-    }, 1000); // Check every second, but only update when needed
-    
-    return () => clearInterval(interval);
-  }, []);
+interface TrafficChartProps {
+  aggregatedData: AggregatedDataPoint[];
+  label: string; // e.g., "Logins" or "Checkouts"
+}
 
-  // Process data to prevent double-counting and ensure we have unique logs
-  const processedData = useMemo(() => {
-    const uniqueLogs: TrafficLog[] = [];
-    const seenKeys = new Set<string>();
-    
-    data.forEach(log => {
-      const key = `${log.timestamp}-${log.endpoint}-${log.method}-${log.statusCode}`;
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        uniqueLogs.push(log);
-      }
-    });
-    
-    return uniqueLogs;
-  }, [data]);
+const TrafficChart: React.FC<TrafficChartProps> = ({ aggregatedData, label }) => {
 
-  // Generate chart data with fixed intervals
+  // Process aggregated data for the chart
   const chartData = useMemo(() => {
-    // Calculate time window boundaries
-    const endTime = new Date(currentTime);
-    const startTime = new Date(endTime);
-    startTime.setMinutes(startTime.getMinutes() - timeWindow);
-    
-    // Use a fixed number of buckets (30 seconds each)
-    const bucketInterval = 30; // 30 seconds per bucket
-    const numSlots = Math.ceil((timeWindow * 60) / bucketInterval);
-    
-    // Create time buckets
-    const buckets: number[] = Array(numSlots).fill(0);
-    const bucketLabels: string[] = [];
-    const bucketTimestamps: Date[] = [];
-    
-    // Calculate bucket timestamps and labels
-    for (let i = 0; i < numSlots; i++) {
-      const slotTime = new Date(startTime);
-      slotTime.setSeconds(slotTime.getSeconds() + (i * bucketInterval));
-      bucketTimestamps.push(slotTime);
-      
-      // Format as HH:MM or MM:SS
-      const hours = slotTime.getHours().toString().padStart(2, '0');
-      const minutes = slotTime.getMinutes().toString().padStart(2, '0');
-      
-      // Just show hours and minutes for better readability
-      bucketLabels.push(`${hours}:${minutes}`);
+    if (!aggregatedData || aggregatedData.length === 0) {
+        // Return empty structure if no data
+        return { labels: [], datasets: [] };
     }
-    
-    // Filter data to only include items within the time window
-    const recentLogs = processedData.filter(log => {
-      const logTime = new Date(log.timestamp);
-      return logTime >= startTime && logTime <= endTime;
-    });
-    
-    // Place logs into appropriate buckets
-    recentLogs.forEach(log => {
-      const logTime = new Date(log.timestamp);
-      
-      // Find which bucket this timestamp belongs to
-      for (let i = 0; i < numSlots - 1; i++) {
-        if (logTime >= bucketTimestamps[i] && logTime < bucketTimestamps[i + 1]) {
-          buckets[i]++;
-          break;
-        }
-      }
-      
-      // Handle the last bucket separately
-      if (logTime >= bucketTimestamps[numSlots - 1] && logTime <= endTime) {
-        buckets[numSlots - 1]++;
-      }
-    });
-    
+
+    // Convert timestamps (seconds) to milliseconds for chart.js
+    const labels = aggregatedData.map(d => d.timestamp * 1000);
+    const dataPoints = aggregatedData.map(d => d.count);
+
+    // Find the min and max timestamp for setting scale bounds
+    const timestamps = aggregatedData.map(d => d.timestamp * 1000);
+    const minTimestamp = Math.min(...timestamps);
+    const maxTimestamp = Math.max(...timestamps);
+
     return {
-      labels: bucketLabels,
+      // labels: labels, // Use timestamps directly on x-axis for TimeScale
       datasets: [{
-        label: 'Requests',
-        data: buckets,
+        label: label, // Use the passed label
+        // Data format for TimeScale: { x: timestamp, y: value }
+        data: aggregatedData.map(d => ({ x: d.timestamp * 1000, y: d.count })),
         fill: true,
-        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        tension: 0.4,
+        backgroundColor: label === 'Logins' ? 'rgba(75, 192, 192, 0.2)' : 'rgba(255, 159, 64, 0.2)',
+        borderColor: label === 'Logins' ? 'rgba(75, 192, 192, 1)' : 'rgba(255, 159, 64, 1)',
+        tension: 0.1, // Less tension for potentially fewer points
+        pointRadius: 2, // Smaller points
+        pointHoverRadius: 4,
       }]
     };
-  }, [currentTime, processedData, timeWindow]);
+  }, [aggregatedData, label]);
 
-  // Prepare response code data
-  const responseCodeData = useMemo(() => {
-    // Filter to only show data within the time window
-    const endTime = currentTime.getTime();
-    const startTime = endTime - (timeWindow * 60 * 1000);
-    
-    const recentLogs = processedData.filter(log => {
-      const logTime = new Date(log.timestamp).getTime();
-      return logTime >= startTime && logTime <= endTime;
-    });
-    
-    const responseCodes: { [key: string]: number } = {};
-    
-    // Count occurrences of each status code
-    recentLogs.forEach(item => {
-      const code = item.statusCode?.toString() || 'unknown';
-      responseCodes[code] = (responseCodes[code] || 0) + 1;
-    });
-    
-    return {
-      labels: Object.keys(responseCodes),
-      datasets: [
-        {
-          label: 'Response Codes',
-          data: Object.values(responseCodes),
-          backgroundColor: [
-            'rgba(75, 192, 192, 0.6)',
-            'rgba(255, 99, 132, 0.6)',
-            'rgba(255, 205, 86, 0.6)',
-            'rgba(54, 162, 235, 0.6)',
-          ],
-          borderColor: [
-            'rgba(75, 192, 192, 1)',
-            'rgba(255, 99, 132, 1)',
-            'rgba(255, 205, 86, 1)',
-            'rgba(54, 162, 235, 1)',
-          ],
-          borderWidth: 1,
-        },
-      ],
-    };
-  }, [currentTime, processedData, timeWindow]);
-  
-  // Calculate totals - these should still update every second for accuracy
-  const totalRequests = useMemo(() => {
-    // Count total requests within the time window
-    const endTime = new Date().getTime(); // Use actual current time
-    const startTime = endTime - (timeWindow * 60 * 1000);
-    
-    return processedData.filter(log => {
-      const logTime = new Date(log.timestamp).getTime();
-      return logTime >= startTime && logTime <= endTime;
-    }).length;
-  }, [processedData, timeWindow]);
-  
-  const last10SecondsCount = useMemo(() => {
-    const endTime = new Date().getTime(); // Use actual current time
-    const tenSecondsAgo = endTime - 10000;
-    
-    return processedData.filter(log => {
-      const logTime = new Date(log.timestamp).getTime();
-      return logTime >= tenSecondsAgo;
-    }).length;
-  }, [processedData]);
-  
-  return (
-    <div className="traffic-chart">
-      <div className="chart-controls">
-        <button 
-          onClick={() => setChartType('line')}
-          className={chartType === 'line' ? 'active' : ''}
-        >
-          Time Series
-        </button>
-        <button 
-          onClick={() => setChartType('bar')}
-          className={chartType === 'bar' ? 'active' : ''}
-        >
-          Response Codes
-        </button>
-      </div>
-      
-      <div className="chart-container">
-        {chartType === 'line' ? (
-          <Line 
-            data={chartData} 
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  min: 0,
-                  suggestedMax: 2
-                }
+  // Chart options using TimeScale
+  const chartOptions = useMemo(() => {
+     // Determine min/max from data, fallback if empty
+    const timestamps = aggregatedData.map(d => d.timestamp * 1000);
+    const minTimestamp = timestamps.length > 0 ? Math.min(...timestamps) : Date.now() - 600000; // Fallback: 10 min ago
+    const maxTimestamp = timestamps.length > 0 ? Math.max(...timestamps) : Date.now();         // Fallback: now
+
+     return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            type: 'time' as const, // Specify the scale type
+            time: {
+              unit: 'minute' as const, // Display unit
+              tooltipFormat: 'PPpp', // Format for tooltips (e.g., Apr 30, 2025, 3:45:00 PM)
+              displayFormats: {
+                minute: 'HH:mm', // Display format on the axis
+                second: 'HH:mm:ss' // Add if using second-level granularity
               },
-              animation: {
-                duration: 0
-              }
-            }} 
-            height={300} 
-          />
-        ) : (
-          <Bar 
-            data={responseCodeData} 
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  min: 0
-                }
-              }
-            }} 
-            height={300} 
-          />
-        )}
+            },
+            title: {
+              display: true,
+              text: 'Time',
+            },
+            min: minTimestamp, // Set bounds based on data
+            max: maxTimestamp,
+          },
+          y: {
+            beginAtZero: true,
+            min: 0,
+            suggestedMax: Math.max(5, ...aggregatedData.map(d => d.count)) + 1, // Dynamic suggested max
+            title: {
+              display: true,
+              text: 'Count',
+            },
+          }
+        },
+        animation: {
+            duration: 250 // Shorter animation for faster updates
+        },
+         plugins: {
+            legend: {
+              position: 'top' as const,
+            },
+             tooltip: {
+                mode: 'index' as const,
+                intersect: false,
+            },
+          },
+           hover: {
+            mode: 'nearest' as const,
+            intersect: true
+          },
+     }
+  }, [aggregatedData]);
+
+
+  return (
+    <div className="traffic-chart-container">
+      {/* Remove chart type controls and stats derived from raw logs */}
+      <div className="chart-wrapper">
+        <Line
+          data={chartData}
+          options={chartOptions}
+          height={250} // Adjust height as needed
+        />
       </div>
-      
-      <div className="traffic-stats">
-        <div className="stat-item">
-          <span className="stat-label">Total Requests:</span>
-          <span className="stat-value">{totalRequests}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Last 10 seconds:</span>
-          <span className="stat-value">{last10SecondsCount}</span>
-        </div>
-      </div>
-      
+      {/* Removed traffic-stats section */}
       <style jsx>{`
-        .traffic-chart {
-          margin-bottom: 30px;
+        .traffic-chart-container {
+          /* Add styling if needed */
         }
-        
-        .chart-controls {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 15px;
-        }
-        
-        .chart-controls button {
-          padding: 8px 16px;
-          background: #f5f5f5;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-        
-        .chart-controls button.active {
-          background: #0070f3;
-          color: white;
-          border-color: #0070f3;
-        }
-        
-        .chart-container {
-          height: 300px;
-          margin-bottom: 15px;
-        }
-        
-        .traffic-stats {
-          display: flex;
-          gap: 20px;
-        }
-        
-        .stat-item {
-          background: #f5f5f5;
-          padding: 10px;
-          border-radius: 4px;
-          flex: 1;
-        }
-        
-        .stat-label {
-          font-weight: bold;
-          margin-right: 5px;
-        }
-        
-        .stat-value {
-          font-size: 18px;
-          color: #0070f3;
+        .chart-wrapper {
+          height: 250px; /* Ensure wrapper has height */
+          position: relative; /* Needed for chart.js responsiveness */
         }
       `}</style>
     </div>
