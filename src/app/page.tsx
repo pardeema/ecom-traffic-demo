@@ -12,37 +12,43 @@ const sampleProducts: Product[] = [
     id: 1,
     name: 'Wireless Headphones',
     price: 99.99,
-    description: 'Premium wireless headphones with noise cancellation.'
+    description: 'Premium wireless headphones with noise cancellation.',
+    imageUrl: 'https://images.botdemo.net/headphones.jpeg'
   },
   {
     id: 2,
     name: 'Smartphone Case',
     price: 24.99,
-    description: 'Durable protective case for your smartphone.'
+    description: 'Durable protective case for your smartphone.',
+    imageUrl: 'https://images.botdemo.net/smartphone-case.jpeg'
   },
   {
     id: 3,
     name: 'Smartwatch',
     price: 149.99,
-    description: 'Feature-packed smartwatch with health monitoring.'
+    description: 'Feature-packed smartwatch with health monitoring.',
+    imageUrl: 'https://images.botdemo.net/smartwatch.jpeg'
   },
   {
     id: 4,
     name: 'Bluetooth Speaker',
     price: 79.99,
-    description: 'Portable speaker with amazing sound quality.'
+    description: 'Portable speaker with amazing sound quality.',
+    imageUrl: 'https://images.botdemo.net/bluetooth-speaker.jpeg'
   },
   {
     id: 5,
     name: 'Wireless Earbuds',
     price: 59.99,
-    description: 'Comfortable earbuds with long battery life.'
+    description: 'Comfortable earbuds with long battery life.',
+    imageUrl: 'https://images.botdemo.net/wireless-earbuds.jpeg'
   },
   {
     id: 6,
     name: 'Laptop Backpack',
     price: 49.99,
-    description: 'Spacious backpack with laptop compartment and USB charging port.'
+    description: 'Spacious backpack with laptop compartment and USB charging port.',
+    imageUrl: 'https://images.botdemo.net/backpack.jpeg'
   }
 ];
 

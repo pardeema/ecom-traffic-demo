@@ -1,5 +1,6 @@
 // src/components/ProductCard.tsx
 import { useState } from 'react';
+import Image from 'next/image'; // Import Next.js Image component
 import { Product } from '@/types';
 
 interface ProductCardProps {
@@ -32,8 +33,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   
   return (
     <div className="product-card">
-      <div className="product-image">
-        <div className="placeholder">Product Image</div>
+      <div className="product-image-wrapper"> {/* Added a wrapper for consistent sizing */} 
+        {product.imageUrl ? (
+          <Image 
+            src={product.imageUrl} 
+            alt={product.name} 
+            width={280} // Set a fixed width
+            height={200} // Set a fixed height
+            objectFit="cover" // Ensures the image covers the area, cropping if necessary
+          />
+        ) : (
+          <div className="placeholder">Product Image</div>
+        )}
       </div>
       
       <div className="product-details">
@@ -56,6 +67,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           border-radius: 8px;
           overflow: hidden;
           transition: transform 0.3s ease, box-shadow 0.3s ease;
+          display: flex; /* Added for flex layout */
+          flex-direction: column; /* Stack items vertically */
         }
         
         .product-card:hover {
@@ -63,12 +76,15 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
         }
         
-        .product-image {
-          height: 200px;
+        .product-image-wrapper { /* Styles for the image wrapper */
+          width: 100%;
+          height: 200px; /* Fixed height for the image area */
+          position: relative; /* For Next/Image layout fill or object-fit */
           background-color: #f5f5f5;
           display: flex;
           align-items: center;
           justify-content: center;
+          overflow: hidden; /* To ensure image respects border radius of card */
         }
         
         .placeholder {
@@ -79,6 +95,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         
         .product-details {
           padding: 15px;
+          flex-grow: 1; /* Allow details to take remaining space */
+          display: flex; /* Added for flex layout */
+          flex-direction: column; /* Stack items vertically */
         }
         
         .product-price {
@@ -91,6 +110,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         .product-description {
           color: #666;
           margin-bottom: 15px;
+          flex-grow: 1; /* Allow description to take available space */
         }
         
         .add-to-cart-btn {
@@ -101,6 +121,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           border-radius: 4px;
           cursor: pointer;
           width: 100%;
+          margin-top: auto; /* Push button to the bottom */
         }
         
         .add-to-cart-btn:hover {
