@@ -181,7 +181,6 @@ const CaptchaLoginForm: React.FC = () => {
         <p>Demo credentials:</p>
         <ul>
           <li>Email: user@example.com</li>
-          <li>Password: K4sad@!</li>
         </ul>
         <p className="captcha-note">
           <strong>Note:</strong> This form is protected by Cloudflare Turnstile CAPTCHA.
