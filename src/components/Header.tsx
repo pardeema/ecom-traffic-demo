@@ -65,9 +65,14 @@ const Header: React.FC = () => {
             </button>
           </>
         ) : (
-          <Link href="/login" className="nav-link">
-            Login
-          </Link>
+          <>
+            <Link href="/login" className="nav-link">
+              Login
+            </Link>
+            <Link href="/captcha-login" className="nav-link">
+              Login with CAPTCHA
+            </Link>
+          </>
         )}
       </nav>
       
