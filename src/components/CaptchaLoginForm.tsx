@@ -19,19 +19,53 @@ const CaptchaLoginForm: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
   const [widgetId, setWidgetId] = useState<string>('');
+  const [scriptLoaded, setScriptLoaded] = useState<boolean>(false);
   const router = useRouter();
 
   useEffect(() => {
+    // Check if script is already loaded
+    if (window.turnstile) {
+      setScriptLoaded(true);
+      return;
+    }
+
+    // Check if script tag already exists
+    const existingScript = document.querySelector('script[src*="turnstile"]');
+    if (existingScript) {
+      // Script is loading, wait for it
+      const checkTurnstile = () => {
+        if (window.turnstile) {
+          setScriptLoaded(true);
+        } else {
+          setTimeout(checkTurnstile, 100);
+        }
+      };
+      checkTurnstile();
+      return;
+    }
+
     // Load Cloudflare Turnstile script
     const script = document.createElement('script');
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
     script.async = true;
     script.defer = true;
+    
+    script.onload = () => {
+      setScriptLoaded(true);
+    };
+    
     document.head.appendChild(script);
 
-    script.onload = () => {
-      // Render the CAPTCHA widget
-      if (window.turnstile) {
+    return () => {
+      // Don't remove the script on cleanup as it might be used by other components
+    };
+  }, []);
+
+  useEffect(() => {
+    // Render the CAPTCHA widget only when script is loaded and container exists
+    if (scriptLoaded && window.turnstile) {
+      const container = document.getElementById('captcha-container');
+      if (container && !container.hasChildNodes()) {
         const id = window.turnstile.render('#captcha-container', {
           sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '1x00000000000000000000AA', // Default test key
           callback: (token: string) => {
@@ -46,16 +80,8 @@ const CaptchaLoginForm: React.FC = () => {
         });
         setWidgetId(id);
       }
-    };
-
-    return () => {
-      // Cleanup script
-      const existingScript = document.querySelector('script[src*="turnstile"]');
-      if (existingScript) {
-        document.head.removeChild(existingScript);
-      }
-    };
-  }, []);
+    }
+  }, [scriptLoaded]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,6 +181,7 @@ const CaptchaLoginForm: React.FC = () => {
         <p>Demo credentials:</p>
         <ul>
           <li>Email: user@example.com</li>
+          <li>Password: K4sad@!</li>
         </ul>
         <p className="captcha-note">
           <strong>Note:</strong> This form is protected by Cloudflare Turnstile CAPTCHA.
